@@ -1,111 +1,105 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { CheckCircle, XCircle } from 'lucide-react';
 
-export default function VerificationApp({ token }: { token: string }) {
-  const [loading, setLoading] = useState(true);
+function formatCurrency(value = 0) {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
+function formatDate(value: any) {
+  if (!value) return '—';
+  const date = value?.seconds ? new Date(value.seconds * 1000) : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+}
+
+function tokenFromPath() {
+  if (typeof window === 'undefined') return '';
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  return parts[0] === 'verif' ? (parts[1] || '') : '';
+}
+
+export default function VerificationApp({ token: providedToken }: { token?: string }) {
+  const token = useMemo(() => providedToken || tokenFromPath(), [providedToken]);
+  const [state, setState] = useState<'loading' | 'found' | 'missing' | 'error'>('loading');
   const [data, setData] = useState<any>(null);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
-    async function fetchToken() {
-      try {
-        const docRef = doc(db, 'public_documents', token);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setData(docSnap.data());
-        } else {
-          setError(true);
-        }
-      } catch (e) {
-        console.error(e);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
+    if (!token) {
+      setState('missing');
+      return;
     }
-    fetchToken();
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'public_documents', token));
+        if (!snap.exists()) {
+          setState('missing');
+          return;
+        }
+        setData(snap.data());
+        setState('found');
+      } catch (error) {
+        console.error(error);
+        setState('error');
+      }
+    })();
   }, [token]);
 
-  if (loading) {
+  if (state === 'loading') {
+    return <section className="verification-shell"><div className="verification-loading"><span className="signal" />Mengecek registry Nalaro…</div></section>;
+  }
+
+  if (state === 'missing' || state === 'error' || !data) {
     return (
-      <div className="container py-20 min-h-[60vh] flex items-center justify-center font-mono text-mute tracking-widest uppercase">
-        Memverifikasi...
-      </div>
+      <section className="verification-shell">
+        <div className="verification-kicker"><span>06 / DOCUMENT REGISTRY</span><span className="registry-code">NOT FOUND</span></div>
+        <div className="verification-error">
+          <span className="verification-state invalid"><i /> TIDAK DITEMUKAN</span>
+          <h1>Dokumen tidak dapat<br/>diverifikasi.</h1>
+          <p>Token tidak valid, dokumen belum diterbitkan, atau registry sedang tidak dapat diakses.</p>
+          <a className="text-link" href="https://nalaro.web.id">Kembali ke Nalaro <span>↗</span></a>
+        </div>
+      </section>
     );
   }
 
-  if (error || !data) {
-    return (
-      <div className="container py-20 min-h-[60vh] flex flex-col items-center justify-center text-center">
-        <XCircle className="w-16 h-16 text-flare mb-6" />
-        <h1 className="text-4xl font-display font-bold mb-4 text-bone uppercase tracking-wide">Invalid Document</h1>
-        <p className="text-mute font-body max-w-md mx-auto leading-relaxed">
-          Token verifikasi tidak valid atau dokumen tidak ditemukan di dalam sistem registry Nalaro.
-        </p>
-      </div>
-    );
-  }
+  const valid = data.valid === true;
+  const status = String(data.status || 'unknown').toLowerCase();
+  const voided = !valid || ['cancelled', 'void'].includes(status);
+  const type = String(data.type || 'document').toUpperCase();
+  const datePrimary = data.type === 'receipt' ? data.paymentDate : data.issueDate;
 
   return (
-    <div className="container py-20 min-h-[60vh]">
-      <div className="max-w-3xl mx-auto bg-ink-2 border border-line p-8 md:p-12 relative overflow-hidden">
-        {/* Accent corners */}
-        <div className="absolute top-0 right-0 w-16 h-16 border-l border-b border-line bg-ink" />
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-r border-t border-line bg-ink" />
+    <section className="verification-shell">
+      <div className="verification-kicker"><span>06 / DOCUMENT REGISTRY</span><span className="registry-code">TOKEN {token.slice(0, 6).toUpperCase()}</span></div>
+      <article className={'registry-record ' + (voided ? 'is-void' : '')}>
+        <header className="registry-head">
+          <div>
+            <span className={'verification-state ' + (voided ? 'invalid' : 'valid')}><i /> {voided ? 'DOCUMENT VOID' : 'DOCUMENT VERIFIED'}</span>
+            <h1>{type === 'RECEIPT' ? 'Payment receipt' : type === 'INVOICE' ? 'Invoice registry' : 'Document registry'}</h1>
+          </div>
+          <div className="registry-status"><small>Status</small><strong>{status.replaceAll('_', ' ').toUpperCase()}</strong></div>
+        </header>
 
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-12 border-b border-line pb-8">
-          <CheckCircle className="w-16 h-16 text-flare flex-shrink-0" />
-          <div>
-            <h1 className="text-3xl font-display font-bold text-bone uppercase tracking-wide mb-2">Dokumen Terverifikasi</h1>
-            <p className="text-mute font-mono text-sm">Valid dan tercatat dalam Nalaro System Registry.</p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-          <div>
-            <p className="text-mute font-mono text-xs mb-2 uppercase tracking-wider">Tipe Dokumen</p>
-            <p className="font-display font-bold text-xl text-bone uppercase">{data.type || 'INVOICE'}</p>
-          </div>
-          <div>
-            <p className="text-mute font-mono text-xs mb-2 uppercase tracking-wider">Status</p>
-            <p className="font-display font-bold text-xl text-flare uppercase">{data.status || 'PAID'}</p>
-          </div>
+        <div className="registry-number"><small>Document number</small><strong>{data.documentNumber || '—'}</strong></div>
+
+        <div className="registry-grid">
+          <div><small>Client</small><strong>{data.clientName || '—'}</strong></div>
+          <div><small>{type === 'RECEIPT' ? 'Payment date' : 'Issued'}</small><strong>{formatDate(datePrimary)}</strong></div>
+          {data.projectName && <div><small>Project</small><strong>{data.projectName}</strong></div>}
+          {type === 'INVOICE' && <div><small>Due date</small><strong>{formatDate(data.dueDate)}</strong></div>}
+          {type === 'RECEIPT' && data.relatedInvoice && <div><small>Related invoice</small><strong>{data.relatedInvoice}</strong></div>}
+          {type === 'RECEIPT' && data.paymentMethod && <div><small>Payment method</small><strong>{data.paymentMethod}</strong></div>}
         </div>
 
-        <div className="space-y-6 font-body text-bone">
-          <div className="flex flex-col sm:flex-row sm:justify-between border-b border-line pb-4 gap-2">
-            <span className="text-mute font-mono text-sm uppercase">Nomor Dokumen</span>
-            <span className="font-medium tracking-wide">{data.documentNumber || '-'}</span>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:justify-between border-b border-line pb-4 gap-2">
-            <span className="text-mute font-mono text-sm uppercase">Klien</span>
-            <span className="font-medium">{data.clientName || '-'}</span>
-          </div>
-          {data.projectName && (
-            <div className="flex flex-col sm:flex-row sm:justify-between border-b border-line pb-4 gap-2">
-              <span className="text-mute font-mono text-sm uppercase">Proyek</span>
-              <span className="font-medium">{data.projectName || '-'}</span>
-            </div>
-          )}
-          {data.issueDate && (
-            <div className="flex flex-col sm:flex-row sm:justify-between border-b border-line pb-4 gap-2">
-              <span className="text-mute font-mono text-sm uppercase">Tanggal Terbit</span>
-              <span className="font-medium">{data.issueDate || '-'}</span>
-            </div>
-          )}
-          <div className="flex flex-col sm:flex-row sm:justify-between pt-4 gap-2">
-            <span className="text-mute font-mono text-sm uppercase">Total Nilai</span>
-            <span className="font-display font-bold text-2xl text-flare">
-              {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(data.amount || 0)}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div className="text-center mt-8 text-mute font-mono text-xs tracking-widest uppercase opacity-50">
-        Nalaro Project Desk Internal System
-      </div>
-    </div>
+        <div className="registry-total"><small>{type === 'RECEIPT' ? 'Amount received' : 'Document value'}</small><strong>{formatCurrency(data.amount)}</strong></div>
+
+        <footer className="registry-foot">
+          <p>{voided ? 'Dokumen ditemukan di registry, tetapi sudah dibatalkan atau dinyatakan tidak berlaku.' : 'Dokumen ini tercatat pada registry publik Nalaro. Informasi sensitif tidak ditampilkan pada halaman verifikasi.'}</p>
+          <span>e-invoice.nalaro.web.id</span>
+        </footer>
+      </article>
+      <div className="verification-note"><span>↳</span> Verifikasi dilakukan langsung dari registry publik Nalaro.</div>
+    </section>
   );
 }
