@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Public verification endpoint
+    // Anyone can read from this collection, but only admins can write
+    match /public_documents/{token} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Secure all other collections
+    // Only authenticated users (admins) can read or write
+    match /clients/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /projects/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /invoices/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /payments/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /receipts/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /settings/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
+

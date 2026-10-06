@@ -1,0 +1,91 @@
+---
+import { nav } from "../../data/site";
+---
+
+<nav 
+  class="rail hidden lg:flex fixed top-0 left-0 h-full w-[64px] border-r border-[var(--color-line)] flex-col justify-between z-40 bg-[var(--color-ink)]"
+  aria-label="Side Navigation"
+>
+  {/* Top: N Logo */}
+  <div class="h-32 flex items-center justify-center border-b border-[var(--color-line)]">
+    <a href="#index" class="block w-8 h-8 focus-visible:outline-2 focus-visible:outline-[var(--color-flare)] focus-visible:outline-offset-2" aria-label="Nalaro Home">
+      <img src="/favicon.svg" alt="" aria-hidden="true" width="32" height="32" />
+    </a>
+  </div>
+
+  {/* Middle: Numbered Nav */}
+  <div class="flex-1 flex flex-col justify-center gap-6 py-8 relative">
+    {nav.map((item) => (
+      <a 
+        href={`#${item.id}`} 
+        class="rail-nav-item group flex items-center relative py-1 px-4 outline-none focus-visible:bg-[var(--color-ink-2)]"
+        data-target={item.id}
+        aria-label={item.label}
+      >
+        <span class="active-indicator absolute left-0 w-[6px] h-[6px] bg-[var(--color-flare)] opacity-0 transition-opacity"></span>
+        <span class="t-label text-[var(--color-mute)] group-hover:text-[var(--color-bone)] group-focus-visible:text-[var(--color-bone)] transition-colors mx-auto">
+          {item.number}
+        </span>
+        
+        {/* Hover Panel */}
+        <span class="hover-panel absolute left-full ml-[1px] bg-[var(--color-ink-2)] border border-[var(--color-line)] px-4 py-2 opacity-0 pointer-events-none transform -translate-x-2 transition-all duration-120 ease-out z-50">
+          <span class="t-label text-[var(--color-bone)] whitespace-nowrap">{item.label}</span>
+        </span>
+      </a>
+    ))}
+  </div>
+
+  {/* Bottom: Active section name & Time */}
+  <div class="h-64 flex items-center justify-center border-t border-[var(--color-line)]">
+    <div class="vertical-text flex gap-4 items-center whitespace-nowrap opacity-60">
+      <span class="t-label text-[var(--color-bone)] uppercase" id="rail-active-name">INDEX</span>
+      <span class="w-1 h-1 bg-[var(--color-mute)] rounded-none"></span>
+      <span class="t-label text-[var(--color-bone)] ticker tabular-nums" id="rail-time">--:-- WIB</span>
+    </div>
+  </div>
+</nav>
+
+<style>
+  .vertical-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  
+  .rail-nav-item:hover .hover-panel,
+  .rail-nav-item:focus-visible .hover-panel {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  /* Active state (managed by script) */
+  :global(.rail-nav-item.is-active) .active-indicator {
+    opacity: 1;
+  }
+  
+  :global(.rail-nav-item.is-active) .t-label {
+    color: var(--color-bone);
+  }
+</style>
+
+<script>
+  // Simple clock for the rail
+  function updateTime() {
+    const el = document.getElementById("rail-time");
+    if (!el) return;
+    
+    const now = new Date();
+    // WIB is UTC+7
+    const options: Intl.DateTimeFormatOptions = { 
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    };
+    
+    const timeStr = new Intl.DateTimeFormat('id-ID', options).format(now);
+    el.textContent = `${timeStr} WIB`;
+  }
+  
+  updateTime();
+  setInterval(updateTime, 60000); // Update every minute is enough since no seconds
+</script>

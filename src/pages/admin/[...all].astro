@@ -1,0 +1,8 @@
+---
+import AdminBaseLayout from '../../layouts/AdminBaseLayout.astro';
+import AdminApp from '../../components/react/AdminApp';
+---
+
+<AdminBaseLayout title="Admin | Nalaro Project Desk">
+  <AdminApp client:only="react" />
+</AdminBaseLayout>

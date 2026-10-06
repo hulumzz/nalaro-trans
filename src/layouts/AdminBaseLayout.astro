@@ -1,0 +1,28 @@
+---
+import '../styles/tokens.css';
+import '../styles/global.css';
+import { site } from '../data/site';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = "Nalaro Project Desk", description = "Admin Area" } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="id" class="bg-ink text-bone">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href={site.favicon} />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body class="bg-ink text-bone font-body m-0 p-0">
+    <slot />
+  </body>
+</html>
+
