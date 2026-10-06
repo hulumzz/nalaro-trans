@@ -1,273 +1,921 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { generateInvoicePDF, generateReceiptPDF } from '../../lib/pdf';
-import { LayoutDashboard, Users, FolderKanban, FileText, Settings, LogOut, Search, Menu, X, Plus, Download } from 'lucide-react';
+
+const ADMIN_EMAIL = 'admin@nalaro.web.id';
+
+function money(value: any = 0) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
+}
+
+function showDate(value: any) {
+  if (!value) return '—';
+  const date = value?.seconds ? new Date(value.seconds * 1000) : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function documentNumber(type: 'PRJ' | 'INV' | 'RCPT') {
+  return 'NAL/' + type + '/' + new Date().getFullYear() + '/' + Date.now().toString().slice(-6);
+}
+
+function publicToken() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID().replaceAll('-', '').slice(0, 20);
+  }
+  return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
+}
+
+function statusClass(status = '') {
+  return 'status-pill status-' + status.toLowerCase().replaceAll(' ', '-').replaceAll('_', '-');
+}
+
+async function readCollection(name: string) {
+  const snap = await getDocs(collection(db, name));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null);
+  const [state, setState] = useState<'loading' | 'allowed' | 'denied'>('loading');
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (user) => {
+      if (!user || user.email !== ADMIN_EMAIL) setState('denied');
+      else setState('allowed');
+    });
+  }, []);
+
+  useEffect(() => {
+    if (state === 'denied') window.location.replace('/login');
+  }, [state]);
+
+  if (state === 'loading') {
+    return <div className="admin-boot"><span className="signal-dot" />Memuat Project Desk…</div>;
+  }
+
+  return state === 'allowed' ? <>{children}</> : null;
+}
+
+function PageHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <header className="page-header">
+      <div>
+        <p className="page-eyebrow"><span>{eyebrow}</span></p>
+        <h1>{title}</h1>
+        {description && <p className="page-description">{description}</p>}
+      </div>
+      {action && <div className="page-action">{action}</div>}
+    </header>
+  );
+}
+
+function EmptyState({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="empty-state">
+      <span className="empty-mark">+</span>
+      <strong>{title}</strong>
+      <p>{copy}</p>
+    </div>
+  );
+}
+
+function Dashboard() {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    Promise.all([
+      readCollection('projects'),
+      readCollection('invoices'),
+      readCollection('receipts'),
+    ]).then(([p, i, r]) => {
+      setProjects(p);
+      setInvoices(i);
+      setReceipts(r);
       setLoading(false);
-      if (!u && !loading) {
-        window.location.href = '/login';
-      }
-    });
-    return () => unsub();
-  }, [loading]);
+    }).catch(() => setLoading(false));
+  }, []);
 
-  if (loading) return <div className="p-8 text-center text-mute font-mono">LOADING SYSTEM...</div>;
-  if (!user) return null;
-  return <>{children}</>;
-}
+  const active = projects.filter((item) => !['completed', 'cancelled'].includes(String(item.status).toLowerCase()));
+  const openInvoices = invoices.filter((item) => !['paid', 'cancelled'].includes(String(item.status).toLowerCase()));
+  const outstanding = openInvoices.reduce((sum, item) => {
+    return sum + Math.max(0, Number(item.grandTotal || 0) - Number(item.paidAmount || 0));
+  }, 0);
+  const completed = projects.filter((item) => String(item.status).toLowerCase() === 'completed').length;
+  const recent = [...projects]
+    .sort((a, b) => String(b.receivedDate || '').localeCompare(String(a.receivedDate || '')))
+    .slice(0, 5);
+  const dueSoon = active
+    .filter((item) => item.deadline)
+    .sort((a, b) => String(a.deadline).localeCompare(String(b.deadline)))
+    .slice(0, 4);
 
-// ------------------- COMPONENTS -------------------
-
-function Dashboard() {
   return (
-    <div className="p-8 lg:p-12 space-y-12 animate-fade-in max-w-6xl mx-auto">
-      <div className="flex items-end justify-between border-b border-line pb-6">
-        <div>
-          <h1 className="text-4xl lg:text-5xl font-display font-bold uppercase tracking-tight leading-none mb-2">System<br/><span className="text-flare">Overview</span></h1>
-          <p className="text-mute font-mono text-sm tracking-widest uppercase mt-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-flare inline-block animate-pulse"></span>
-            Live Status
-          </p>
-        </div>
-        <div className="hidden md:block text-right">
-          <div className="text-xs font-mono text-mute uppercase tracking-widest border border-line px-3 py-1 mb-2 bg-ink-2">Server Time</div>
-          <div className="font-mono text-xl">{new Date().toLocaleTimeString('en-US', { hour12: false })}</div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="bg-ink-2 p-8 border-2 border-line hover:border-flare transition-all relative group shadow-[8px_8px_0_0_var(--color-line)] hover:shadow-[8px_8px_0_0_var(--color-flare)] hover:-translate-y-1 hover:-translate-x-1">
-          <div className="absolute top-0 right-0 w-4 h-4 border-l border-b border-line group-hover:border-flare transition-colors" />
-          <h3 className="text-mute text-xs font-mono uppercase tracking-widest mb-4">Active Projects</h3>
-          <p className="text-5xl font-display font-bold text-flare">0<span className="text-2xl text-mute ml-2">/slots</span></p>
-        </div>
-        
-        <div className="bg-ink-2 p-8 border-2 border-line hover:border-flare transition-all relative group shadow-[8px_8px_0_0_var(--color-line)] hover:shadow-[8px_8px_0_0_var(--color-flare)] hover:-translate-y-1 hover:-translate-x-1">
-          <div className="absolute top-0 right-0 w-4 h-4 border-l border-b border-line group-hover:border-flare transition-colors" />
-          <h3 className="text-mute text-xs font-mono uppercase tracking-widest mb-4">Waiting Payment</h3>
-          <p className="text-5xl font-display font-bold text-flare">Rp 0</p>
-        </div>
-        
-        <div className="bg-ink-2 p-8 border-2 border-line hover:border-flare transition-all relative group shadow-[8px_8px_0_0_var(--color-line)] hover:shadow-[8px_8px_0_0_var(--color-flare)] hover:-translate-y-1 hover:-translate-x-1">
-          <div className="absolute top-0 right-0 w-4 h-4 border-l border-b border-line group-hover:border-flare transition-colors" />
-          <h3 className="text-mute text-xs font-mono uppercase tracking-widest mb-4">Completed</h3>
-          <p className="text-5xl font-display font-bold text-flare">0<span className="text-2xl text-mute ml-2">docs</span></p>
-        </div>
+    <section className="admin-page">
+      <PageHeader
+        eyebrow="01 / Overview"
+        title="Project Desk"
+        description="Satu tempat untuk memantau proyek, invoice, pembayaran, dan arsip Nalaro."
+      />
+
+      <div className="metric-grid">
+        <article className="metric-card">
+          <span>Proyek aktif</span>
+          <strong>{loading ? '—' : String(active.length).padStart(2, '0')}</strong>
+          <small>sedang berjalan</small>
+        </article>
+        <article className="metric-card">
+          <span>Menunggu pembayaran</span>
+          <strong>{loading ? '—' : money(outstanding)}</strong>
+          <small>{openInvoices.length} invoice terbuka</small>
+        </article>
+        <article className="metric-card">
+          <span>Proyek selesai</span>
+          <strong>{loading ? '—' : String(completed).padStart(2, '0')}</strong>
+          <small>seluruh waktu</small>
+        </article>
+        <article className="metric-card">
+          <span>Receipt</span>
+          <strong>{loading ? '—' : String(receipts.length).padStart(2, '0')}</strong>
+          <small>sudah diterbitkan</small>
+        </article>
       </div>
 
-      <div className="bg-ink-2 border-l-4 border-flare border-y border-r border-y-line border-r-line p-8 relative overflow-hidden mt-12">
-        <div className="absolute top-0 right-0 p-4 opacity-10">
-          <LayoutDashboard size={120} />
-        </div>
-        <h2 className="font-display font-bold text-2xl tracking-wide mb-4 relative z-10">INITIALIZATION SEQUENCE COMPLETE</h2>
-        <p className="text-mute font-mono text-sm leading-relaxed max-w-2xl relative z-10">
-          Nalaro Project Desk system is fully operational. Database connections are secure. 
-          Navigate modules via the command sidebar. Generate PDFs using the <span className="text-flare border-b border-flare">Invoices</span> module.
-        </p>
+      <div className="dashboard-grid">
+        <section className="panel">
+          <div className="panel-heading"><span>Proyek terbaru</span><NavLink to="/projects">Lihat semua ↗</NavLink></div>
+          {recent.length === 0 ? (
+            <EmptyState title="Belum ada proyek" copy="Buat proyek pertama untuk mulai mencatat pekerjaan Nalaro." />
+          ) : (
+            <div className="record-list">
+              {recent.map((item) => (
+                <div className="record-row" key={item.id}>
+                  <div>
+                    <small>{item.projectNumber || 'PROJECT'}</small>
+                    <strong>{item.name}</strong>
+                    <span>{item.clientName || 'Tanpa klien'}</span>
+                  </div>
+                  <div className="record-meta">
+                    <span className={statusClass(item.status)}>{String(item.status || 'Planning').replaceAll('_', ' ')}</span>
+                    <small>{showDate(item.deadline)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading"><span>Perlu perhatian</span><small>{dueSoon.length} item</small></div>
+          {dueSoon.length === 0 ? (
+            <EmptyState title="Semua terkendali" copy="Belum ada deadline proyek yang perlu ditampilkan." />
+          ) : (
+            <div className="timeline-list">
+              {dueSoon.map((item) => (
+                <div className="timeline-item" key={item.id}>
+                  <span className="signal-dot" />
+                  <div><strong>{item.name}</strong><p>{item.clientName || 'Tanpa klien'}</p></div>
+                  <time>{showDate(item.deadline)}</time>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </section>
   );
 }
 
 function Clients() {
+  const blank = { name: '', picName: '', email: '', whatsapp: '', address: '', notes: '' };
   const [clients, setClients] = useState<any[]>([]);
-  const [name, setName] = useState('');
-  const [picName, setPicName] = useState('');
-  
-  useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'clients'));
-        setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchClients();
-  }, []);
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const addClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const docRef = await addDoc(collection(db, 'clients'), {
-        clientCode: `CLI-${Math.floor(Math.random()*10000)}`,
-        name,
-        picName,
-        createdAt: serverTimestamp()
-      });
-      setClients([...clients, { id: docRef.id, name, picName }]);
-      setName(''); setPicName('');
-    } catch(e) {
-      console.error(e);
-      alert("Error adding client. Check Firestore rules.");
-    }
+  const load = () => readCollection('clients').then(setClients);
+  useEffect(() => { load().catch(console.error); }, []);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await addDoc(collection(db, 'clients'), {
+      ...form,
+      clientCode: 'CLI-' + Date.now().toString().slice(-6),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    setForm(blank);
+    setShowForm(false);
+    await load();
   };
 
-  return (
-    <div className="p-6 lg:p-10 space-y-8">
-      <h1 className="text-3xl font-display font-bold uppercase tracking-wide">Client Directory</h1>
-      
-      <form onSubmit={addClient} className="bg-ink-2 p-6 border border-line flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-mono text-mute mb-2 uppercase">Nama Perusahaan</label>
-          <input required type="text" className="w-full bg-ink border border-line p-3 text-bone focus:outline-none focus:border-flare" value={name} onChange={e=>setName(e.target.value)} />
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-mono text-mute mb-2 uppercase">Nama PIC</label>
-          <input required type="text" className="w-full bg-ink border border-line p-3 text-bone focus:outline-none focus:border-flare" value={picName} onChange={e=>setPicName(e.target.value)} />
-        </div>
-        <button type="submit" className="bg-flare text-ink font-bold px-6 py-3 uppercase tracking-wider hover:bg-bone hover:text-ink transition-colors flex items-center gap-2 h-[50px]">
-          <Plus size={18}/> Tambah
-        </button>
-      </form>
+  const rows = clients.filter((item) => {
+    return (String(item.name) + ' ' + String(item.picName) + ' ' + String(item.email))
+      .toLowerCase()
+      .includes(search.toLowerCase());
+  });
 
-      <div className="border border-line overflow-x-auto bg-ink-2">
-        <table className="w-full text-left text-sm font-body">
-          <thead className="bg-ink font-mono text-mute text-xs uppercase border-b border-line">
-            <tr>
-              <th className="p-4 font-normal">ID Klien</th>
-              <th className="p-4 font-normal">Nama Perusahaan</th>
-              <th className="p-4 font-normal">PIC</th>
-            </tr>
-          </thead>
+  return (
+    <section className="admin-page">
+      <PageHeader
+        eyebrow="03 / Clients"
+        title="Klien"
+        description="Kontak dan identitas pihak yang bekerja bersama Nalaro."
+        action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Klien baru</button>}
+      />
+
+      {showForm && (
+        <form className="editor-panel" onSubmit={submit}>
+          <div className="editor-title"><strong>Klien baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
+          <div className="form-grid">
+            <label><span>Nama klien / perusahaan *</span><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+            <label><span>Nama PIC *</span><input required value={form.picName} onChange={(e) => setForm({ ...form, picName: e.target.value })} /></label>
+            <label><span>Email</span><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+            <label><span>WhatsApp</span><input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} /></label>
+            <label className="wide"><span>Alamat</span><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></label>
+            <label className="wide"><span>Catatan</span><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
+          </div>
+          <div className="form-actions"><button className="primary-button" type="submit">Simpan klien</button></div>
+        </form>
+      )}
+
+      <div className="toolbar">
+        <input className="search-field" placeholder="Cari nama, PIC, atau email…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <span>{rows.length} record</span>
+      </div>
+
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Kode</th><th>Klien</th><th>PIC</th><th>Kontak</th></tr></thead>
           <tbody>
-            {clients.map(c => (
-              <tr key={c.id} className="border-b border-line hover:bg-ink transition-colors">
-                <td className="p-4 font-mono text-mute-b">{c.id.slice(0,8)}</td>
-                <td className="p-4 font-bold text-bone">{c.name}</td>
-                <td className="p-4 text-mute">{c.picName}</td>
+            {rows.map((item) => (
+              <tr key={item.id}>
+                <td><code>{item.clientCode || item.id.slice(0, 8)}</code></td>
+                <td><strong>{item.name}</strong></td>
+                <td>{item.picName || '—'}</td>
+                <td><span>{item.email || item.whatsapp || '—'}</span></td>
               </tr>
             ))}
-            {clients.length === 0 && (
-              <tr>
-                <td colSpan={3} className="p-8 text-center text-mute font-mono">
-                  TIDAK ADA DATA KLIEN.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {rows.length === 0 && <EmptyState title="Belum ada klien" copy="Tambahkan klien untuk menghubungkannya ke proyek dan invoice." />}
       </div>
-    </div>
+    </section>
+  );
+}
+
+function Projects() {
+  const blank = {
+    name: '',
+    clientId: '',
+    serviceType: 'Website Development',
+    receivedDate: today(),
+    deadline: '',
+    status: 'planning',
+    value: '',
+    description: '',
+  };
+  const [projects, setProjects] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const load = async () => {
+    const [projectRows, clientRows] = await Promise.all([readCollection('projects'), readCollection('clients')]);
+    setProjects(projectRows);
+    setClients(clientRows);
+  };
+  useEffect(() => { load().catch(console.error); }, []);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const client = clients.find((item) => item.id === form.clientId);
+    await addDoc(collection(db, 'projects'), {
+      projectNumber: documentNumber('PRJ'),
+      name: form.name,
+      clientId: form.clientId,
+      clientName: client?.name || '',
+      serviceType: form.serviceType,
+      receivedDate: form.receivedDate,
+      deadline: form.deadline,
+      status: form.status,
+      value: Number(form.value || 0),
+      description: form.description,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    setForm(blank);
+    setShowForm(false);
+    await load();
+  };
+
+  const rows = projects.filter((item) => {
+    return (String(item.name) + ' ' + String(item.clientName) + ' ' + String(item.projectNumber))
+      .toLowerCase()
+      .includes(search.toLowerCase());
+  });
+
+  return (
+    <section className="admin-page">
+      <PageHeader
+        eyebrow="02 / Projects"
+        title="Proyek"
+        description="Catat pekerjaan dari tanggal masuk sampai selesai."
+        action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Proyek baru</button>}
+      />
+
+      {showForm && (
+        <form className="editor-panel" onSubmit={submit}>
+          <div className="editor-title"><strong>Proyek baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
+          <div className="form-grid">
+            <label><span>Nama proyek *</span><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+            <label><span>Klien *</span><select required value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })}><option value="">Pilih klien</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label><span>Jenis layanan</span><select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })}><option>Website Development</option><option>Landing Page</option><option>Custom Information System</option><option>Maintenance</option><option>Hosting</option><option>Domain</option><option>Nalaro Product</option><option>Other</option></select></label>
+            <label><span>Nilai proyek</span><input type="number" min="0" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></label>
+            <label><span>Tanggal masuk</span><input type="date" value={form.receivedDate} onChange={(e) => setForm({ ...form, receivedDate: e.target.value })} /></label>
+            <label><span>Deadline</span><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} /></label>
+            <label><span>Status</span><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="planning">Planning</option><option value="in_progress">In Progress</option><option value="review">Review</option><option value="on_hold">On Hold</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+            <label className="wide"><span>Deskripsi</span><textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+          </div>
+          <div className="form-actions"><button className="primary-button" type="submit">Simpan proyek</button></div>
+        </form>
+      )}
+
+      <div className="toolbar">
+        <input className="search-field" placeholder="Cari proyek, klien, atau nomor…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <span>{rows.length} project</span>
+      </div>
+
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Proyek</th><th>Klien</th><th>Layanan</th><th>Deadline</th><th>Nilai</th><th>Status</th></tr></thead>
+          <tbody>
+            {rows.map((item) => (
+              <tr key={item.id}>
+                <td><small>{item.projectNumber}</small><strong>{item.name}</strong></td>
+                <td>{item.clientName || '—'}</td>
+                <td>{item.serviceType || '—'}</td>
+                <td>{showDate(item.deadline)}</td>
+                <td>{money(item.value)}</td>
+                <td><span className={statusClass(item.status)}>{String(item.status || '').replaceAll('_', ' ')}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && <EmptyState title="Belum ada proyek" copy="Buat proyek setelah data klien tersedia." />}
+      </div>
+    </section>
   );
 }
 
 function Invoices() {
-  const handleGeneratePDF = async () => {
-    const dummyInvoice = {
-      invoiceNumber: `NAL/INV/2026/${Math.floor(Math.random()*1000)}`,
-      issueDate: '2026-10-06',
-      dueDate: '2026-10-13',
-      subtotal: 5000000,
-      grandTotal: 5000000,
-      publicToken: 'demo-token-123',
-      items: [
-        { description: 'Website Development', quantity: 1, unitPrice: 5000000, total: 5000000 }
-      ]
-    };
-    const dummyClient = { name: 'PT Contoh Indonesia', picName: 'Budi Santoso' };
-    
-    await generateInvoicePDF(dummyInvoice, dummyClient, null, null);
+  const blank = {
+    projectId: '',
+    issueDate: today(),
+    dueDate: '',
+    description: 'Website Development',
+    amount: '',
+    discount: '0',
+    notes: '',
+  };
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+  const [paying, setPaying] = useState<any>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    paymentDate: today(),
+    paymentMethod: 'Bank Transfer',
+    reference: '',
+  });
+
+  const load = async () => {
+    const [invoiceRows, projectRows, clientRows, paymentRows, receiptRows] = await Promise.all([
+      readCollection('invoices'),
+      readCollection('projects'),
+      readCollection('clients'),
+      readCollection('payments'),
+      readCollection('receipts'),
+    ]);
+    setInvoices(invoiceRows);
+    setProjects(projectRows);
+    setClients(clientRows);
+    setPayments(paymentRows);
+    setReceipts(receiptRows);
+    const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
+    if (settingsSnap.exists()) setSettings(settingsSnap.data());
+  };
+  useEffect(() => { load().catch(console.error); }, []);
+
+  const selectProject = (projectId: string) => {
+    const project = projects.find((item) => item.id === projectId);
+    setForm((current) => ({
+      ...current,
+      projectId,
+      description: project?.serviceType || current.description,
+      amount: project ? String(project.value || '') : current.amount,
+    }));
+  };
+
+  const createInvoice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const project = projects.find((item) => item.id === form.projectId);
+    const client = clients.find((item) => item.id === project?.clientId);
+    if (!project || !client) return;
+
+    const subtotal = Number(form.amount || 0);
+    const discount = Number(form.discount || 0);
+    const grandTotal = Math.max(0, subtotal - discount);
+    const token = publicToken();
+    const number = documentNumber('INV');
+
+    await addDoc(collection(db, 'invoices'), {
+      invoiceNumber: number,
+      projectId: project.id,
+      projectName: project.name,
+      clientId: client.id,
+      clientName: client.name,
+      issueDate: form.issueDate,
+      dueDate: form.dueDate,
+      status: 'unpaid',
+      items: [{
+        description: form.description,
+        details: project.description || '',
+        quantity: 1,
+        unitPrice: subtotal,
+        total: subtotal,
+      }],
+      subtotal,
+      discount,
+      taxType: 'none',
+      taxAmount: 0,
+      grandTotal,
+      paidAmount: 0,
+      outstandingAmount: grandTotal,
+      notes: form.notes,
+      publicToken: token,
+      clientSnapshot: {
+        name: client.name,
+        picName: client.picName || '',
+        email: client.email || '',
+        address: client.address || '',
+      },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, 'public_documents', token), {
+      type: 'invoice',
+      documentNumber: number,
+      clientName: client.name,
+      projectName: project.name,
+      issueDate: form.issueDate,
+      dueDate: form.dueDate,
+      amount: grandTotal,
+      status: 'unpaid',
+      valid: true,
+    });
+
+    setForm(blank);
+    setShowForm(false);
+    await load();
+  };
+
+  const downloadInvoice = async (invoice: any) => {
+    const client = clients.find((item) => item.id === invoice.clientId) || invoice.clientSnapshot || { name: invoice.clientName };
+    const project = projects.find((item) => item.id === invoice.projectId) || { name: invoice.projectName };
+    await generateInvoicePDF(invoice, client, project, settings);
+  };
+
+  const recordPayment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!paying) return;
+
+    const amount = Math.max(0, Number(paymentForm.amount || 0));
+    if (!amount) return;
+
+    const currentPaid = Number(paying.paidAmount || 0);
+    const total = Number(paying.grandTotal || 0);
+    const newPaid = Math.min(total, currentPaid + amount);
+    const outstanding = Math.max(0, total - newPaid);
+    const nextStatus = outstanding === 0 ? 'paid' : 'partial';
+
+    await addDoc(collection(db, 'payments'), {
+      invoiceId: paying.id,
+      invoiceNumber: paying.invoiceNumber,
+      clientId: paying.clientId,
+      paymentDate: paymentForm.paymentDate,
+      amount,
+      paymentMethod: paymentForm.paymentMethod,
+      reference: paymentForm.reference,
+      createdAt: serverTimestamp(),
+    });
+
+    await updateDoc(doc(db, 'invoices', paying.id), {
+      paidAmount: newPaid,
+      outstandingAmount: outstanding,
+      status: nextStatus,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (paying.publicToken) {
+      await updateDoc(doc(db, 'public_documents', paying.publicToken), { status: nextStatus });
+    }
+
+    setPaying(null);
+    setPaymentForm({ amount: '', paymentDate: today(), paymentMethod: 'Bank Transfer', reference: '' });
+    await load();
+  };
+
+  const issueReceipt = async (invoice: any) => {
+    const invoicePayments = payments
+      .filter((item) => item.invoiceId === invoice.id)
+      .sort((a, b) => String(b.paymentDate).localeCompare(String(a.paymentDate)));
+    const payment = invoicePayments[0];
+    if (!payment || receipts.some((item) => item.paymentId === payment.id)) return;
+
+    const token = publicToken();
+    const number = documentNumber('RCPT');
+
+    await addDoc(collection(db, 'receipts'), {
+      receiptNumber: number,
+      invoiceId: invoice.id,
+      relatedInvoice: invoice.invoiceNumber,
+      paymentId: payment.id,
+      clientId: invoice.clientId,
+      clientName: invoice.clientName,
+      projectName: invoice.projectName,
+      amount: payment.amount,
+      paymentDate: payment.paymentDate,
+      paymentMethod: payment.paymentMethod,
+      paymentReference: payment.reference || '',
+      publicToken: token,
+      createdAt: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, 'public_documents', token), {
+      type: 'receipt',
+      documentNumber: number,
+      relatedInvoice: invoice.invoiceNumber,
+      clientName: invoice.clientName,
+      projectName: invoice.projectName || '',
+      amount: payment.amount,
+      paymentDate: payment.paymentDate,
+      paymentMethod: payment.paymentMethod,
+      status: 'paid',
+      valid: true,
+    });
+
+    await load();
   };
 
   return (
-    <div className="p-6 lg:p-10 space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-3xl font-display font-bold uppercase tracking-wide">Invoices</h1>
-        <button onClick={handleGeneratePDF} className="bg-flare text-ink font-bold px-6 py-3 uppercase tracking-wider hover:bg-bone hover:text-ink transition-colors flex items-center gap-2">
-          <Download size={18} /> Test Generate PDF
-        </button>
-      </div>
+    <section className="admin-page">
+      <PageHeader
+        eyebrow="04 / Invoices"
+        title="Invoice"
+        description="Buat tagihan, catat pembayaran manual, lalu terbitkan receipt."
+        action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Invoice baru</button>}
+      />
 
-      <div className="bg-ink-2 border border-line p-8 text-center text-mute font-mono">
-        <p>MODUL INVOICE DALAM PENGEMBANGAN.</p>
-        <p className="mt-2 text-xs">Gunakan tombol di atas untuk menguji fungsi PDF Generator Nalaro.</p>
+      {showForm && (
+        <form className="editor-panel" onSubmit={createInvoice}>
+          <div className="editor-title"><strong>Invoice baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
+          <div className="form-grid">
+            <label className="wide"><span>Proyek *</span><select required value={form.projectId} onChange={(e) => selectProject(e.target.value)}><option value="">Pilih proyek</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.clientName}</option>)}</select></label>
+            <label><span>Tanggal terbit</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} /></label>
+            <label><span>Jatuh tempo *</span><input required type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
+            <label><span>Deskripsi item</span><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+            <label><span>Nilai</span><input required type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
+            <label><span>Diskon</span><input type="number" min="0" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+            <label className="wide"><span>Catatan</span><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
+          </div>
+          <div className="form-actions"><span>PPN tidak dipungut</span><button className="primary-button" type="submit">Terbitkan invoice</button></div>
+        </form>
+      )}
+
+      {paying && (
+        <form className="editor-panel" onSubmit={recordPayment}>
+          <div className="editor-title">
+            <div><small>{paying.invoiceNumber}</small><strong>Catat pembayaran</strong></div>
+            <button type="button" onClick={() => setPaying(null)}>Tutup ×</button>
+          </div>
+          <div className="payment-summary"><span>Sisa tagihan</span><strong>{money(paying.outstandingAmount ?? paying.grandTotal)}</strong></div>
+          <div className="form-grid">
+            <label><span>Jumlah dibayar</span><input required type="number" min="1" max={paying.outstandingAmount ?? paying.grandTotal} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} /></label>
+            <label><span>Tanggal pembayaran</span><input type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} /></label>
+            <label><span>Metode</span><select value={paymentForm.paymentMethod} onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}><option>Bank Transfer</option><option>Cash</option><option>E-Wallet</option><option>Other</option></select></label>
+            <label><span>Referensi</span><input value={paymentForm.reference} onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })} /></label>
+          </div>
+          <div className="form-actions"><button className="primary-button" type="submit">Simpan pembayaran</button></div>
+        </form>
+      )}
+
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Invoice</th><th>Klien / proyek</th><th>Total</th><th>Dibayar</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody>
+            {invoices.map((invoice) => {
+              const invoicePayments = payments
+                .filter((item) => item.invoiceId === invoice.id)
+                .sort((a, b) => String(b.paymentDate).localeCompare(String(a.paymentDate)));
+              const latestPayment = invoicePayments[0];
+              const hasReceipt = latestPayment ? receipts.some((item) => item.paymentId === latestPayment.id) : false;
+
+              return (
+                <tr key={invoice.id}>
+                  <td><small>{showDate(invoice.issueDate)}</small><strong>{invoice.invoiceNumber}</strong></td>
+                  <td><strong>{invoice.clientName}</strong><span>{invoice.projectName}</span></td>
+                  <td>{money(invoice.grandTotal)}</td>
+                  <td>{money(invoice.paidAmount || 0)}</td>
+                  <td><span className={statusClass(invoice.status)}>{invoice.status}</span></td>
+                  <td>
+                    <div className="row-actions">
+                      <button onClick={() => downloadInvoice(invoice)}>PDF</button>
+                      {!['paid', 'cancelled'].includes(String(invoice.status)) && (
+                        <button onClick={() => {
+                          setPaying(invoice);
+                          setPaymentForm((current) => ({
+                            ...current,
+                            amount: String(invoice.outstandingAmount ?? invoice.grandTotal),
+                          }));
+                        }}>Bayar</button>
+                      )}
+                      {latestPayment && !hasReceipt && <button onClick={() => issueReceipt(invoice)}>Receipt</button>}
+                      {hasReceipt && <span>Receipt ✓</span>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {invoices.length === 0 && <EmptyState title="Belum ada invoice" copy="Terbitkan invoice dari proyek yang sudah tercatat." />}
       </div>
-    </div>
+    </section>
   );
 }
 
+function Receipts() {
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
 
-function AdminLayout() {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    Promise.all([
+      readCollection('receipts'),
+      readCollection('clients'),
+      readCollection('projects'),
+      readCollection('invoices'),
+      getDoc(doc(db, 'settings', 'general')),
+    ]).then(([receiptRows, clientRows, projectRows, invoiceRows, settingSnap]) => {
+      setReceipts(receiptRows as any[]);
+      setClients(clientRows as any[]);
+      setProjects(projectRows as any[]);
+      setInvoices(invoiceRows as any[]);
+      if ((settingSnap as any).exists()) setSettings((settingSnap as any).data());
+    }).catch(console.error);
+  }, []);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    window.location.href = '/login';
+  const download = async (receipt: any) => {
+    const invoice = invoices.find((item) => item.id === receipt.invoiceId);
+    const client = clients.find((item) => item.id === receipt.clientId) || { name: receipt.clientName };
+    const project = projects.find((item) => item.id === invoice?.projectId) || { name: receipt.projectName };
+    await generateReceiptPDF(receipt, client, project, settings);
   };
 
-  const navItems = [
-    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
-    { name: 'Clients', path: '/admin/clients', icon: Users },
-    { name: 'Projects', path: '/admin/projects', icon: FolderKanban },
-    { name: 'Invoices', path: '/admin/invoices', icon: FileText },
-    { name: 'Archive', path: '/admin/archive', icon: Search },
-    { name: 'Settings', path: '/admin/settings', icon: Settings },
-  ];
+  return (
+    <section className="admin-page">
+      <PageHeader eyebrow="05 / Receipts" title="Receipt" description="Bukti pembayaran yang telah diterbitkan oleh Nalaro." />
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th></th></tr></thead>
+          <tbody>
+            {receipts.map((receipt) => (
+              <tr key={receipt.id}>
+                <td><small>{showDate(receipt.paymentDate)}</small><strong>{receipt.receiptNumber}</strong></td>
+                <td>{receipt.clientName || '—'}</td>
+                <td>{receipt.relatedInvoice || '—'}</td>
+                <td>{money(receipt.amount)}</td>
+                <td>{receipt.paymentMethod || '—'}</td>
+                <td><div className="row-actions"><button onClick={() => download(receipt)}>PDF</button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {receipts.length === 0 && <EmptyState title="Belum ada receipt" copy="Receipt muncul setelah pembayaran dicatat dan diterbitkan dari menu invoice." />}
+      </div>
+    </section>
+  );
+}
+
+function Archive() {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([readCollection('projects'), readCollection('invoices'), readCollection('receipts')])
+      .then(([p, i, r]) => {
+        setProjects(p);
+        setInvoices(i);
+        setReceipts(r);
+      }).catch(console.error);
+  }, []);
+
+  const closedProjects = projects.filter((item) => ['completed', 'cancelled'].includes(String(item.status).toLowerCase()));
+  const closedInvoices = invoices.filter((item) => ['paid', 'cancelled'].includes(String(item.status).toLowerCase()));
 
   return (
-    <div className="flex min-h-screen bg-ink text-bone font-body selection:bg-flare selection:text-ink">
-      
-      {/* Sidebar Mobile Toggle */}
-      <div className="md:hidden p-4 bg-ink border-b border-line flex justify-between items-center fixed top-0 w-full z-20">
-        <span className="font-display font-bold text-bone tracking-widest">NALARO<span className="text-flare">.</span></span>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-bone">
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
+    <section className="admin-page">
+      <PageHeader eyebrow="06 / Archive" title="Arsip" description="Dokumen selesai tetap tersimpan dan mudah ditelusuri." />
+      <div className="archive-grid">
+        <article className="panel">
+          <div className="panel-heading"><span>Proyek selesai</span><small>{closedProjects.length}</small></div>
+          {closedProjects.length ? (
+            <div className="record-list">
+              {closedProjects.map((item) => (
+                <div className="record-row" key={item.id}>
+                  <div><small>{item.projectNumber}</small><strong>{item.name}</strong><span>{item.clientName}</span></div>
+                  <span className={statusClass(item.status)}>{item.status}</span>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState title="Arsip proyek kosong" copy="Proyek Completed atau Cancelled akan muncul di sini." />}
+        </article>
 
-      {/* Sidebar */}
-      <aside className={`bg-ink-2 w-64 border-r border-line flex-shrink-0 fixed md:static inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out z-10 pt-16 md:pt-0 flex flex-col`}>
-        <div className="p-8 hidden md:block border-b border-line">
-          <h2 className="text-2xl font-display font-bold tracking-widest text-bone">NALARO<span className="text-flare">.</span></h2>
-          <p className="font-mono text-xs text-mute mt-1 tracking-widest">PROJECT DESK</p>
+        <article className="panel">
+          <div className="panel-heading"><span>Dokumen finansial</span><small>{closedInvoices.length + receipts.length}</small></div>
+          <div className="archive-counts">
+            <div><strong>{closedInvoices.length}</strong><span>invoice selesai</span></div>
+            <div><strong>{receipts.length}</strong><span>receipt</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function Settings() {
+  const defaults = {
+    businessName: 'Nalaro',
+    ownerName: 'Muhamad Khoirul Ulum',
+    email: '',
+    website: 'https://nalaro.web.id',
+    address: '',
+    bankName: '',
+    accountNumber: '',
+    accountHolder: '',
+    verificationBaseUrl: 'https://e-invoice.nalaro.web.id/verif/',
+  };
+  const [form, setForm] = useState(defaults);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'general')).then((snap) => {
+      if (snap.exists()) setForm((current) => ({ ...current, ...snap.data() }));
+    }).catch(console.error);
+  }, []);
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await setDoc(doc(db, 'settings', 'general'), {
+      ...form,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1800);
+  };
+
+  return (
+    <section className="admin-page">
+      <PageHeader eyebrow="07 / Settings" title="Pengaturan" description="Identitas dan informasi pembayaran yang dipakai di dokumen Nalaro." />
+      <form className="editor-panel settings-panel" onSubmit={save}>
+        <div className="editor-title"><strong>Identitas Nalaro</strong>{saved && <span className="saved-note">Tersimpan ✓</span>}</div>
+        <div className="form-grid">
+          <label><span>Business name</span><input value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} /></label>
+          <label><span>Owner</span><input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} /></label>
+          <label><span>Email</span><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label><span>Website</span><input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} /></label>
+          <label className="wide"><span>Alamat</span><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></label>
         </div>
-        
-        <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className="flex items-center px-4 py-3 font-mono text-sm tracking-wide text-mute hover:bg-line hover:text-bone transition-colors"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <item.icon className="w-4 h-4 mr-4" />
-              {item.name}
-            </Link>
+        <div className="editor-title subsection"><strong>Rekening pembayaran</strong></div>
+        <div className="form-grid">
+          <label><span>Bank</span><input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} /></label>
+          <label><span>Atas nama</span><input value={form.accountHolder} onChange={(e) => setForm({ ...form, accountHolder: e.target.value })} /></label>
+          <label className="wide"><span>Nomor rekening</span><input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} /></label>
+        </div>
+        <div className="form-actions"><button className="primary-button" type="submit">Simpan pengaturan</button></div>
+      </form>
+    </section>
+  );
+}
+
+function AdminLayout() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  const navigation = [
+    ['01', 'Overview', '/'],
+    ['02', 'Projects', '/projects'],
+    ['03', 'Clients', '/clients'],
+    ['04', 'Invoices', '/invoices'],
+    ['05', 'Receipts', '/receipts'],
+    ['06', 'Archive', '/archive'],
+  ];
+
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  const logout = async () => {
+    await signOut(auth);
+    window.location.replace('/login');
+  };
+
+  return (
+    <div className="admin-shell">
+      <header className="admin-mobilebar">
+        <a href="https://nalaro.web.id" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
+        <button onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? 'Tutup' : 'Menu'} <span>+</span></button>
+      </header>
+
+      {menuOpen && <button className="sidebar-scrim" aria-label="Tutup menu" onClick={() => setMenuOpen(false)} />}
+
+      <aside className={'admin-sidebar ' + (menuOpen ? 'is-open' : '')}>
+        <div className="sidebar-head">
+          <a href="https://nalaro.web.id" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
+          <p>PROJECT DESK / INTERNAL</p>
+        </div>
+
+        <nav>
+          {navigation.map(([number, label, path]) => (
+            <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => isActive ? 'active' : ''}>
+              <span>{number}</span><strong>{label}</strong><i>↗</i>
+            </NavLink>
           ))}
         </nav>
-        
-        <div className="p-4 border-t border-line">
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center px-4 py-3 font-mono text-sm tracking-wide text-flare hover:bg-line transition-colors"
-          >
-            <LogOut className="w-4 h-4 mr-4" />
-            LOGOUT
-          </button>
+
+        <div className="sidebar-foot">
+          <NavLink to="/settings" className={({ isActive }) => isActive ? 'active settings-link' : 'settings-link'}>
+            <span>07</span><strong>Settings</strong><i>↗</i>
+          </NavLink>
+          <button onClick={logout}><span>×</span><strong>Keluar</strong></button>
+          <small>e-invoice.nalaro.web.id</small>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 pt-16 md:pt-0 overflow-y-auto bg-ink relative">
+      <main className="admin-main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/projects" element={<Projects />} />
           <Route path="/clients" element={<Clients />} />
-          <Route path="/projects" element={<div className="p-10"><h1 className="text-3xl font-display font-bold uppercase">Projects</h1><div className="mt-8 p-8 border border-line bg-ink-2 font-mono text-mute text-center text-sm">PROYEK DALAM TAHAP PENGEMBANGAN</div></div>} />
           <Route path="/invoices" element={<Invoices />} />
-          <Route path="/archive" element={<div className="p-10"><h1 className="text-3xl font-display font-bold uppercase">Archive</h1><div className="mt-8 p-8 border border-line bg-ink-2 font-mono text-mute text-center text-sm">ARSIP KOSONG</div></div>} />
-          <Route path="/settings" element={<div className="p-10"><h1 className="text-3xl font-display font-bold uppercase">Settings</h1></div>} />
-          <Route path="*" element={<Navigate to="/admin" />} />
+          <Route path="/receipts" element={<Receipts />} />
+          <Route path="/archive" element={<Archive />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
