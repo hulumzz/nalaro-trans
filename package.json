@@ -9,7 +9,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "check": "tsc --noEmit",
+    "test:pdf": "node tests/pdf.test.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
@@ -29,8 +31,11 @@
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
-    "typescript": "^7.0.2",
     "@types/react": "^18.3.28",
-    "@types/react-dom": "^18.3.7"
+    "@types/react-dom": "^18.3.7",
+    "jsqr": "^1.4.0",
+    "playwright": "^1.56.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
   }
 }

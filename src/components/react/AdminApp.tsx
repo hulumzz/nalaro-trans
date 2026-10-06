@@ -12,7 +12,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { generateInvoicePDF, generateReceiptPDF } from '../../lib/pdf';
+import { PAYMENT_METHODS, paymentInformation } from '../../lib/payment';
+import { verificationBaseUrl } from '../../lib/verification';
 
 const ADMIN_EMAIL = 'admin@nalaro.web.id';
 
@@ -57,6 +58,24 @@ function statusClass(status = '') {
 async function readCollection(name: string) {
   const snap = await getDocs(collection(db, name));
   return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+function usePdfDownload() {
+  const [downloading, setDownloading] = useState('');
+  const [downloadError, setDownloadError] = useState('');
+  const downloadPDF = async (id: string, kind: 'invoice' | 'receipt', record: any, client: any, project: any, settings: any) => {
+    if (downloading) return;
+    setDownloading(id);
+    setDownloadError('');
+    try {
+      const pdf = await import('../../lib/pdf');
+      await (kind === 'invoice' ? pdf.generateInvoicePDF : pdf.generateReceiptPDF)(record, client, project, settings);
+    } catch (error) {
+      console.error('PDF download failed', error);
+      setDownloadError('PDF belum berhasil dibuat. ' + (error instanceof Error ? error.message : 'Coba unduh kembali.'));
+    } finally { setDownloading(''); }
+  };
+  return { downloading, downloadError, downloadPDF };
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -414,6 +433,7 @@ function Invoices() {
     amount: '',
     discount: '0',
     notes: '',
+    paymentMethod: 'Bank Transfer',
   };
   const [invoices, setInvoices] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -421,6 +441,7 @@ function Invoices() {
   const [payments, setPayments] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const { downloading, downloadError, downloadPDF } = usePdfDownload();
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
   const [paying, setPaying] = useState<any>(null);
@@ -495,6 +516,8 @@ function Invoices() {
       paidAmount: 0,
       outstandingAmount: grandTotal,
       notes: form.notes,
+      paymentMethod: form.paymentMethod,
+      paymentDetails: paymentInformation(form.paymentMethod, settings || {}),
       publicToken: token,
       clientSnapshot: {
         name: client.name,
@@ -526,7 +549,7 @@ function Invoices() {
   const downloadInvoice = async (invoice: any) => {
     const client = clients.find((item) => item.id === invoice.clientId) || invoice.clientSnapshot || { name: invoice.clientName };
     const project = projects.find((item) => item.id === invoice.projectId) || { name: invoice.projectName };
-    await generateInvoicePDF(invoice, client, project, settings);
+    await downloadPDF(invoice.id, 'invoice', invoice, client, project, settings);
   };
 
   const recordPayment = async (event: React.FormEvent) => {
@@ -550,6 +573,7 @@ function Invoices() {
       amount,
       paymentMethod: paymentForm.paymentMethod,
       reference: paymentForm.reference,
+      paymentDetails: paymentInformation(paymentForm.paymentMethod, settings || {}),
       createdAt: serverTimestamp(),
     });
 
@@ -586,11 +610,14 @@ function Invoices() {
       paymentId: payment.id,
       clientId: invoice.clientId,
       clientName: invoice.clientName,
-      projectName: invoice.projectName,
+      projectName: invoice.projectName || '',
+      projectId: invoice.projectId || '',
+      clientSnapshot: invoice.clientSnapshot || { name: invoice.clientName || '' },
       amount: payment.amount,
       paymentDate: payment.paymentDate,
       paymentMethod: payment.paymentMethod,
       paymentReference: payment.reference || '',
+      paymentDetails: payment.paymentDetails || paymentInformation(payment.paymentMethod, settings || {}),
       publicToken: token,
       createdAt: serverTimestamp(),
     });
@@ -620,6 +647,8 @@ function Invoices() {
         action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Invoice baru</button>}
       />
 
+      {downloadError && <p className="document-error" role="alert">{downloadError}</p>}
+
       {showForm && (
         <form className="editor-panel" onSubmit={createInvoice}>
           <div className="editor-title"><strong>Invoice baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
@@ -630,6 +659,7 @@ function Invoices() {
             <label><span>Deskripsi item</span><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
             <label><span>Nilai</span><input required type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
             <label><span>Diskon</span><input type="number" min="0" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+            <label><span>Metode pembayaran</span><select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
             <label className="wide"><span>Catatan</span><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           </div>
           <div className="form-actions"><span>PPN tidak dipungut</span><button className="primary-button" type="submit">Terbitkan invoice</button></div>
@@ -646,7 +676,7 @@ function Invoices() {
           <div className="form-grid">
             <label><span>Jumlah dibayar</span><input required type="number" min="1" max={paying.outstandingAmount ?? paying.grandTotal} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} /></label>
             <label><span>Tanggal pembayaran</span><input type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} /></label>
-            <label><span>Metode</span><select value={paymentForm.paymentMethod} onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}><option>Bank Transfer</option><option>Cash</option><option>E-Wallet</option><option>Other</option></select></label>
+            <label><span>Metode</span><select value={paymentForm.paymentMethod} onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
             <label><span>Referensi</span><input value={paymentForm.reference} onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })} /></label>
           </div>
           <div className="form-actions"><button className="primary-button" type="submit">Simpan pembayaran</button></div>
@@ -673,13 +703,14 @@ function Invoices() {
                   <td><span className={statusClass(invoice.status)}>{invoice.status}</span></td>
                   <td>
                     <div className="row-actions">
-                      <button onClick={() => downloadInvoice(invoice)}>PDF</button>
+                      <button disabled={!!downloading} onClick={() => downloadInvoice(invoice)}>{downloading === invoice.id ? 'Membuat…' : 'PDF'}</button>
                       {!['paid', 'cancelled'].includes(String(invoice.status)) && (
                         <button onClick={() => {
                           setPaying(invoice);
                           setPaymentForm((current) => ({
                             ...current,
                             amount: String(invoice.outstandingAmount ?? invoice.grandTotal),
+                            paymentMethod: invoice.paymentMethod || 'Bank Transfer',
                           }));
                         }}>Bayar</button>
                       )}
@@ -704,6 +735,7 @@ function Receipts() {
   const [projects, setProjects] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const { downloading, downloadError, downloadPDF } = usePdfDownload();
 
   useEffect(() => {
     Promise.all([
@@ -723,14 +755,15 @@ function Receipts() {
 
   const download = async (receipt: any) => {
     const invoice = invoices.find((item) => item.id === receipt.invoiceId);
-    const client = clients.find((item) => item.id === receipt.clientId) || { name: receipt.clientName };
-    const project = projects.find((item) => item.id === invoice?.projectId) || { name: receipt.projectName };
-    await generateReceiptPDF(receipt, client, project, settings);
+    const client = clients.find((item) => item.id === receipt.clientId) || receipt.clientSnapshot || invoice?.clientSnapshot || { name: receipt.clientName };
+    const project = projects.find((item) => item.id === (receipt.projectId || invoice?.projectId)) || { name: receipt.projectName };
+    await downloadPDF(receipt.id, 'receipt', receipt, client, project, settings);
   };
 
   return (
     <section className="admin-page">
       <PageHeader eyebrow="05 / Receipts" title="Receipt" description="Bukti pembayaran yang telah diterbitkan oleh Nalaro." />
+      {downloadError && <p className="document-error" role="alert">{downloadError}</p>}
       <div className="data-table-wrap">
         <table className="data-table">
           <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th></th></tr></thead>
@@ -742,7 +775,7 @@ function Receipts() {
                 <td>{receipt.relatedInvoice || '—'}</td>
                 <td>{money(receipt.amount)}</td>
                 <td>{receipt.paymentMethod || '—'}</td>
-                <td><div className="row-actions"><button onClick={() => download(receipt)}>PDF</button></div></td>
+                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -810,30 +843,70 @@ function Settings() {
     bankName: '',
     accountNumber: '',
     accountHolder: '',
-    verificationBaseUrl: 'https://e-invoice.nalaro.web.id/verif/',
+    verificationBaseUrl: '',
+    qrisMerchantName: '',
+    qrisImage: '',
+    walletName: '',
+    walletNumber: '',
+    walletHolder: '',
+    otherPaymentInfo: '',
   };
   const [form, setForm] = useState(defaults);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getDoc(doc(db, 'settings', 'general')).then((snap) => {
-      if (snap.exists()) setForm((current) => ({ ...current, ...snap.data() }));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.verificationBaseUrl === 'https://e-invoice.nalaro.web.id/verif/' && window.location.hostname !== 'e-invoice.nalaro.web.id') data.verificationBaseUrl = '';
+        setForm((current) => ({ ...current, ...data }));
+      }
     }).catch(console.error);
   }, []);
 
+  const uploadQris = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Unggah QRIS berupa PNG atau JPG.');
+      if (file.size > 300 * 1024) throw new Error('Ukuran QRIS maksimal 300 KB. Gunakan gambar QRIS yang jelas.');
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('QRIS tidak dapat dibaca.'));
+        reader.readAsDataURL(file);
+      });
+      const preview = new Image();
+      preview.src = image;
+      await preview.decode();
+      if (preview.naturalWidth < 128 || preview.naturalHeight < 128) throw new Error('Resolusi gambar QRIS terlalu kecil. Minimal 128 × 128 piksel.');
+      setForm((current) => ({ ...current, qrisImage: image }));
+    } catch (error) { setError(error instanceof Error ? error.message : 'Gambar QRIS tidak valid.'); }
+    event.target.value = '';
+  };
+
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    await setDoc(doc(db, 'settings', 'general'), {
-      ...form,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    setError(''); setSaved(false); setSaving(true);
+    try {
+      verificationBaseUrl(form);
+      await setDoc(doc(db, 'settings', 'general'), {
+        ...form,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (error) { setError(error instanceof Error ? error.message : 'Pengaturan belum tersimpan.'); }
+    finally { setSaving(false); }
   };
 
   return (
     <section className="admin-page">
       <PageHeader eyebrow="07 / Settings" title="Pengaturan" description="Identitas dan informasi pembayaran yang dipakai di dokumen Nalaro." />
+      {error && <p className="document-error" role="alert">{error}</p>}
       <form className="editor-panel settings-panel" onSubmit={save}>
         <div className="editor-title"><strong>Identitas Nalaro</strong>{saved && <span className="saved-note">Tersimpan ✓</span>}</div>
         <div className="form-grid">
@@ -849,7 +922,24 @@ function Settings() {
           <label><span>Atas nama</span><input value={form.accountHolder} onChange={(e) => setForm({ ...form, accountHolder: e.target.value })} /></label>
           <label className="wide"><span>Nomor rekening</span><input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} /></label>
         </div>
-        <div className="form-actions"><button className="primary-button" type="submit">Simpan pengaturan</button></div>
+        <div className="editor-title subsection"><strong>QRIS statis</strong></div>
+        <div className="form-grid">
+          <label><span>Nama merchant</span><input value={form.qrisMerchantName} onChange={(e) => setForm({ ...form, qrisMerchantName: e.target.value })} /></label>
+          <label><span>Gambar QRIS (PNG/JPG, maks. 300 KB)</span><input type="file" accept="image/png,image/jpeg" onChange={uploadQris} /></label>
+          {form.qrisImage && <div className="payment-image-preview"><img src={form.qrisImage} alt="QRIS pembayaran Nalaro" /><button type="button" className="text-link" onClick={() => setForm({ ...form, qrisImage: '' })}>Hapus gambar ×</button></div>}
+        </div>
+        <div className="editor-title subsection"><strong>E-wallet / metode lainnya</strong></div>
+        <div className="form-grid">
+          <label><span>E-wallet</span><input value={form.walletName} onChange={(e) => setForm({ ...form, walletName: e.target.value })} /></label>
+          <label><span>Nomor e-wallet</span><input value={form.walletNumber} onChange={(e) => setForm({ ...form, walletNumber: e.target.value })} /></label>
+          <label><span>Atas nama e-wallet</span><input value={form.walletHolder} onChange={(e) => setForm({ ...form, walletHolder: e.target.value })} /></label>
+          <label><span>Informasi metode lainnya</span><textarea rows={2} value={form.otherPaymentInfo} onChange={(e) => setForm({ ...form, otherPaymentInfo: e.target.value })} /></label>
+        </div>
+        <div className="editor-title subsection"><strong>Verifikasi dokumen</strong></div>
+        <div className="form-grid">
+          <label className="wide"><span>URL dasar verifikasi</span><input type="url" placeholder={typeof window !== 'undefined' ? window.location.origin + '/verif/' : 'https://alamat-aplikasi/verif/'} value={form.verificationBaseUrl} onChange={(e) => setForm({ ...form, verificationBaseUrl: e.target.value })} /><small>Kosongkan untuk memakai alamat aplikasi ini. Jika diisi, gunakan halaman verifikasi yang aktif, misalnya https://alamat-aplikasi/verif/.</small></label>
+        </div>
+        <div className="form-actions"><button disabled={saving} className="primary-button" type="submit">{saving ? 'Menyimpan…' : 'Simpan pengaturan'}</button></div>
       </form>
     </section>
   );
