@@ -1,98 +1,61 @@
-import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 
+const ADMIN_EMAIL = 'admin@nalaro.web.id';
+
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(ADMIN_EMAIL);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+      if (user.email === ADMIN_EMAIL) window.location.replace('/admin');
+      else await signOut(auth);
+    });
+  }, []);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      window.location.href = '/admin';
-    } catch (err: any) {
-      setError('Login gagal. Periksa kembali email dan password Anda.');
-      setIsLoading(false);
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (credential.user.email !== ADMIN_EMAIL) {
+        await signOut(auth);
+        throw new Error('unauthorized');
+      }
+      window.location.replace('/admin');
+    } catch {
+      setError('Akses ditolak. Periksa email dan password admin.');
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-[85vh] items-center justify-center p-6 relative">
-      {/* Decorative background grid pattern */}
-      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '32px 32px', opacity: 0.2 }} />
-      
-      <div className="w-full max-w-md bg-ink-2 border border-line p-10 relative z-10 shadow-[8px_8px_0_0_var(--color-line)]">
-        {/* Decorative corner accent */}
-        <div className="absolute top-0 right-0 w-8 h-8 border-l border-b border-line bg-ink flex items-center justify-center">
-          <span className="w-2 h-2 bg-flare block"></span>
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <div className="auth-brand-row">
+          <a href="https://nalaro.web.id" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
+          <span className="auth-tag"><i /> INTERNAL</span>
         </div>
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-r border-t border-line bg-ink flex items-center justify-center">
-          <span className="w-2 h-2 bg-flare block"></span>
+        <div className="auth-copy">
+          <p>PROJECT DESK / 2026</p>
+          <h1>Kelola proyek.<br/><span>Tanpa berantakan.</span></h1>
+          <p className="auth-description">Area internal untuk proyek, invoice, pembayaran, receipt, dan arsip Nalaro.</p>
         </div>
-
-        <div className="mb-10 text-center">
-          <h2 className="text-3xl font-display font-bold text-bone tracking-tight uppercase leading-none">
-            Nalaro<span className="text-flare">.</span><br/>
-            <span className="text-xl tracking-widest text-mute">Project Desk</span>
-          </h2>
-        </div>
-        
-        {error && (
-          <div className="mb-8 text-flare border border-flare p-4 text-sm font-mono bg-ink flex items-start gap-3">
-            <span className="w-2 h-2 bg-flare inline-block mt-1.5 flex-shrink-0"></span>
-            <p>{error}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-8">
-          <div>
-            <label className="flex justify-between text-xs font-mono text-mute mb-3 uppercase tracking-widest">
-              <span>Admin Email</span>
-              <span className="text-flare">ID</span>
-            </label>
-            <input
-              type="email"
-              className="w-full bg-ink border border-line px-4 py-3 text-bone focus:outline-none focus:border-flare focus:ring-1 focus:ring-flare transition-all"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="admin@nalaro.web.id"
-            />
-          </div>
-
-          <div>
-            <label className="flex justify-between text-xs font-mono text-mute mb-3 uppercase tracking-widest">
-              <span>Password</span>
-              <span className="text-flare">KEY</span>
-            </label>
-            <input
-              type="password"
-              className="w-full bg-ink border border-line px-4 py-3 text-bone focus:outline-none focus:border-flare focus:ring-1 focus:ring-flare transition-all"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-flare text-ink font-bold py-4 uppercase tracking-widest hover:bg-bone hover:text-ink transition-all disabled:opacity-50 relative group overflow-hidden mt-4"
-          >
-            <span className="relative z-10">{isLoading ? 'AUTHORIZING...' : 'INITIALIZE SYSTEM'}</span>
-            <div className="absolute inset-0 h-full w-0 bg-bone transition-all duration-300 ease-out group-hover:w-full z-0"></div>
-          </button>
+        <form onSubmit={submit} className="auth-form">
+          <label><span>Email admin</span><input autoComplete="username" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required /></label>
+          <label><span>Password</span><input autoComplete="current-password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required placeholder="••••••••••••" /></label>
+          {error && <p className="auth-error"><i />{error}</p>}
+          <button className="primary-button auth-submit" disabled={loading}>{loading ? 'Memverifikasi…' : 'Masuk ke Project Desk'} <span>↗</span></button>
         </form>
-        
-        <div className="mt-10 pt-6 border-t border-line text-center text-xs font-mono text-mute tracking-widest">
-          SECURE ACCESS ONLY
-        </div>
-      </div>
-    </div>
+        <footer><span>e-invoice.nalaro.web.id</span><a href="https://nalaro.web.id">Kembali ke Nalaro ↗</a></footer>
+      </section>
+      <aside className="auth-aside" aria-hidden="true"><span>01</span><div><small>NALARO SYSTEM</small><strong>CLIENT<br/>PROJECT<br/><em>INVOICE</em><br/>RECEIPT.</strong></div><p>Useful systems for useful work.</p></aside>
+    </main>
   );
 }
