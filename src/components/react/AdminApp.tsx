@@ -1139,7 +1139,7 @@ function Settings() {
         </div>
         <div className="editor-title subsection"><strong>Verifikasi dokumen</strong></div>
         <div className="form-grid">
-          <label className="wide"><span>URL dasar verifikasi</span><input type="url" placeholder={typeof window !== 'undefined' ? window.location.origin + '/verifi/' : 'https://alamat-aplikasi/verifi/'} value={form.verificationBaseUrl} onChange={(e) => setForm({ ...form, verificationBaseUrl: e.target.value })} /><small>Kosongkan untuk memakai alamat aplikasi ini. Jika diisi, gunakan halaman verifikasi yang aktif, misalnya https://alamat-aplikasi/verif/.</small></label>
+          <label className="wide"><span>URL dasar verifikasi</span><input type="url" placeholder={typeof window !== 'undefined' ? window.location.origin + '/verifi/' : 'https://alamat-aplikasi/verifi/'} value={form.verificationBaseUrl} onChange={(e) => setForm({ ...form, verificationBaseUrl: e.target.value })} /><small>Kosongkan untuk memakai alamat aplikasi ini. Jika diisi, gunakan halaman verifikasi yang aktif, misalnya https://alamat-aplikasi/verifi/.</small></label>
         </div>
         <div className="form-actions"><button disabled={saving} className="primary-button" type="submit">{saving ? 'Menyimpan…' : 'Simpan pengaturan'}</button></div>
       </form>
