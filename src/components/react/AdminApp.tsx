@@ -716,6 +716,27 @@ function Invoices() {
     await downloadPDF(invoice.id, 'invoice', invoice, client, project, settings);
   };
 
+  const deleteInvoice = async (invoice: any) => {
+    const relatedPayments = payments.filter((item) => item.invoiceId === invoice.id);
+    const paymentIds = new Set(relatedPayments.map((item) => item.id));
+    const relatedReceipts = receipts.filter((item) => item.invoiceId === invoice.id || paymentIds.has(item.paymentId));
+    const warning = relatedPayments.length || relatedReceipts.length
+      ? ' Invoice ini memiliki ' + relatedPayments.length + ' pembayaran dan ' + relatedReceipts.length + ' receipt terkait. Data terkait juga akan dihapus.'
+      : '';
+    if (!window.confirm('Hapus invoice "' + invoice.invoiceNumber + '"?' + warning + ' Tindakan ini tidak dapat dibatalkan.')) return;
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'invoices', invoice.id));
+    if (invoice.publicToken) batch.delete(doc(db, 'public_documents', invoice.publicToken));
+    relatedPayments.forEach((payment) => batch.delete(doc(db, 'payments', payment.id)));
+    relatedReceipts.forEach((receipt) => {
+      batch.delete(doc(db, 'receipts', receipt.id));
+      if (receipt.publicToken) batch.delete(doc(db, 'public_documents', receipt.publicToken));
+    });
+    await batch.commit();
+    await load();
+  };
+
   const recordPayment = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!paying) return;
@@ -880,6 +901,7 @@ function Invoices() {
                       )}
                       {latestPayment && !hasReceipt && <button onClick={() => issueReceipt(invoice)}>Receipt</button>}
                       {hasReceipt && <span>Receipt ✓</span>}
+                      <button className="danger-action" onClick={() => deleteInvoice(invoice)}>Hapus</button>
                     </div>
                   </td>
                 </tr>
@@ -899,23 +921,25 @@ function Receipts() {
   const [projects, setProjects] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const [deleting, setDeleting] = useState('');
   const { downloading, downloadError, downloadPDF } = usePdfDownload();
 
-  useEffect(() => {
-    Promise.all([
+  const load = async () => {
+    const [receiptRows, clientRows, projectRows, invoiceRows, settingSnap] = await Promise.all([
       readCollection('receipts'),
       readCollection('clients'),
       readCollection('projects'),
       readCollection('invoices'),
       getDoc(doc(db, 'settings', 'general')),
-    ]).then(([receiptRows, clientRows, projectRows, invoiceRows, settingSnap]) => {
-      setReceipts(receiptRows as any[]);
-      setClients(clientRows as any[]);
-      setProjects(projectRows as any[]);
-      setInvoices(invoiceRows as any[]);
-      if ((settingSnap as any).exists()) setSettings((settingSnap as any).data());
-    }).catch(console.error);
-  }, []);
+    ]);
+    setReceipts(receiptRows as any[]);
+    setClients(clientRows as any[]);
+    setProjects(projectRows as any[]);
+    setInvoices(invoiceRows as any[]);
+    if ((settingSnap as any).exists()) setSettings((settingSnap as any).data());
+  };
+
+  useEffect(() => { load().catch(console.error); }, []);
 
   const download = async (receipt: any) => {
     const invoice = invoices.find((item) => item.id === receipt.invoiceId);
@@ -924,13 +948,27 @@ function Receipts() {
     await downloadPDF(receipt.id, 'receipt', receipt, client, project, settings);
   };
 
+  const remove = async (receipt: any) => {
+    if (!window.confirm('Hapus receipt "' + receipt.receiptNumber + '"? Pembayaran asli tidak dihapus dan receipt dapat diterbitkan kembali dari invoice.')) return;
+    setDeleting(receipt.id);
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'receipts', receipt.id));
+      if (receipt.publicToken) batch.delete(doc(db, 'public_documents', receipt.publicToken));
+      await batch.commit();
+      await load();
+    } finally {
+      setDeleting('');
+    }
+  };
+
   return (
     <section className="admin-page">
       <PageHeader eyebrow="05 / Receipts" title="Receipt" description="Bukti pembayaran yang telah diterbitkan oleh Nalaro." />
       {downloadError && <p className="document-error" role="alert">{downloadError}</p>}
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th></th></tr></thead>
+          <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th>Aksi</th></tr></thead>
           <tbody>
             {receipts.map((receipt) => (
               <tr key={receipt.id}>
@@ -939,7 +977,7 @@ function Receipts() {
                 <td>{receipt.relatedInvoice || '—'}</td>
                 <td>{money(receipt.amount)}</td>
                 <td>{receipt.paymentMethod || '—'}</td>
-                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button></div></td>
+                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button><button className="danger-action" disabled={deleting === receipt.id} onClick={() => remove(receipt)}>{deleting === receipt.id ? 'Menghapus…' : 'Hapus'}</button></div></td>
               </tr>
             ))}
           </tbody>
