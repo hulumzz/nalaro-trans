@@ -38,16 +38,19 @@ try {
     await download.saveAs(resolve(output, kind + '-download.pdf'));
     for (const method of ['Bank Transfer', 'QRIS', 'Cash', 'E-Wallet']) {
       const result = await page.evaluate(({ kind, method }) => window.testAPI.pdf(kind, method), { kind, method });
-      await writeFile(resolve(output, `${kind}-${method.replaceAll(' ', '-')}.pdf`), Buffer.from(result.pdf.split(',')[1], 'base64'));
-      console.log(`${kind} / ${method}: ${result.pages} page(s)`);
+      const bytes = Buffer.from(result.pdf.split(',')[1], 'base64');
+      await writeFile(resolve(output, kind + '-' + method.replaceAll(' ', '-') + '.pdf'), bytes);
+      assert.equal(result.pages, 1, kind + ' / ' + method + ' should remain a one-page document');
+      assert.ok(bytes.length < 450000, kind + ' / ' + method + ' PDF should stay compact');
+      console.log(kind + ' / ' + method + ': ' + result.pages + ' page(s), ' + bytes.length + ' bytes');
     }
     const long = await page.evaluate((kind) => window.testAPI.pdf(kind, 'QRIS', true), kind);
-    assert.ok(long.pages > 1, 'Long content must paginate');
+    assert.equal(long.pages, 1, 'Long content must stay within the compact one-page template');
     await writeFile(resolve(output, kind + '-long.pdf'), Buffer.from(long.pdf.split(',')[1], 'base64'));
     console.log(`${kind} / long content: ${long.pages} pages`);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: real PDF downloads, all payment methods, pagination and branded QR decoding.');
+  console.log('PASS: real PDF downloads, one-page compact layout, all payment methods and branded QR decoding.');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));

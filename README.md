@@ -13,7 +13,7 @@ npm run check
 npm run build
 ```
 
-Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan `public/_redirects` melayani `/admin/*` dan `/verif/*` pada aplikasi statis.
+Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan `public/_redirects` melayani `/admin/*` dan `/verifi/*` pada aplikasi statis.
 
 ## Pembayaran dan dokumen PDF
 
@@ -24,13 +24,13 @@ Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan
 
 Informasi pembayaran pada dokumen baru disimpan ketika invoice diterbitkan atau pembayaran dicatat. Receipt memakai informasi pembayaran yang tercatat pada pembayaran tersebut. Perubahan rekening di Pengaturan tidak mengubah informasi pada dokumen yang sudah memiliki salinan tersebut. Dokumen lama tanpa salinan memakai pengaturan saat diunduh. Cash tidak menampilkan informasi rekening, e-wallet, atau QRIS.
 
-PDF memakai header abu-abu, logo Nalaro, pembungkusan teks, tabel dengan pergantian halaman, nomor halaman, dan dua kode yang dibedakan jelas ketika QRIS dipilih: **QRIS pembayaran** dan **QR verifikasi dokumen**. Logo hanya ditambahkan ke QR verifikasi, dengan error correction H dan quiet zone empat modul.
+PDF memakai layout A4 satu halaman yang mengikuti desain Payment Receipt terbaru: header abu-abu terang, aksen oranye, watermark logo, blok summary/total, detail pembayaran, dan QR verifikasi. Invoice memakai bahasa visual yang sama. QR verifikasi memakai error correction H, quiet zone empat modul, dan logo Nalaro yang diperbesar di tengah tanpa menampilkan hostname di sekitar QR. Footer dokumen menautkan `https://www.nalaro.one`. Dokumen dibuat dengan kompresi PDF dan hanya memakai font bawaan agar ukuran tetap kecil tanpa mengurangi ketajaman teks.
 
 ## URL verifikasi
 
-Kolom **URL dasar verifikasi** di Pengaturan dapat dikosongkan untuk mengikuti alamat aplikasi yang sedang diakses, termasuk domain Pages yang aktif. Contoh URL khusus: `https://alamat-aplikasi/verif/`.
+Kolom **URL dasar verifikasi** di Pengaturan dapat dikosongkan untuk mengikuti alamat aplikasi yang sedang diakses, termasuk domain Pages yang aktif. Contoh URL khusus: `https://alamat-aplikasi/verifi/`.
 
-Urutan pemilihan alamat: pengaturan eksplisit, `PUBLIC_VERIFICATION_BASE_URL`, lalu origin aplikasi. Nilai bawaan lama `https://e-invoice.nalaro.web.id/verif/` otomatis mengikuti origin saat aplikasi diakses dari host lain. Halaman verifikasi juga menerima `/verif/?token=TOKEN` untuk host tanpa rewrite path.
+Urutan pemilihan alamat: pengaturan eksplisit, `PUBLIC_VERIFICATION_BASE_URL`, lalu origin aplikasi. Nilai bawaan lama `https://e-invoice.nalaro.web.id/verifi/` otomatis mengikuti origin saat aplikasi diakses dari host lain. Halaman verifikasi juga menerima `/verifi/?token=TOKEN` untuk host tanpa rewrite path.
 
 Subdomain khusus harus ditambahkan dan diaktifkan melalui penyedia hosting/DNS sebelum dipakai. Perubahan kode tidak membuat DNS subdomain aktif. PDF yang sudah tersimpan dengan alamat lama perlu diunduh ulang; token verifikasi tetap sama.
 
@@ -44,3 +44,7 @@ npm run test:pdf
 Pengujian membangun modul PDF untuk produksi, membuka Chromium, menguji unduhan PDF sesungguhnya, empat metode pembayaran, teks panjang, kestabilan salinan informasi pembayaran, migrasi URL lama, parsing token, serta scan QR berlogo pada ukuran 600/300/160 piksel. Keluaran contoh ada di `artifacts/pdf-tests/` (diabaikan Git). Gambar QRIS pada pengujian merupakan kode demo, bukan QRIS pembayaran asli.
 
 `CHROMIUM_EXECUTABLE` dan `CHROMIUM_ARGS` (array JSON) dapat dipakai jika browser disediakan oleh lingkungan pengujian.
+
+## CRUD data
+
+Menu **Clients** dan **Projects** menyediakan View, Edit, dan Delete. Penghapusan client/project diblokir bila masih memiliki relasi penting. Invoice dapat dihapus beserta payment/receipt/public registry terkait, sedangkan menghapus receipt tidak menghapus payment sehingga receipt dapat diterbitkan kembali.

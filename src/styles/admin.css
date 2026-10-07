@@ -95,3 +95,21 @@ img,svg{display:block;max-width:100%}
 .form-grid label>small{color:var(--color-mute);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
 .payment-image-preview{grid-column:1/-1;padding:18px;display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap}
 .payment-image-preview img{width:180px;max-width:100%;height:auto;background:#fff}
+
+
+/* CRUD detail panels keep the existing Project Desk visual language. */
+.detail-panel{border:1px solid #3d4038;background:#10110f;margin-bottom:26px}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--color-line)}
+.detail-grid>div{min-width:0;padding:16px 18px;border-right:1px solid var(--color-line);border-bottom:1px solid var(--color-line)}
+.detail-grid>div:nth-child(even){border-right:0}.detail-grid>div.wide{grid-column:1/-1;border-right:0}
+.detail-grid span{display:block;margin-bottom:7px;font:500 8px var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:#7e8178}
+.detail-grid strong{display:block;font-size:13px;font-weight:550;color:var(--color-bone);overflow-wrap:anywhere}
+.detail-grid p{font-size:12px;line-height:1.7;color:var(--color-mute);white-space:pre-wrap;overflow-wrap:anywhere}
+.detail-actions{min-height:58px;padding:10px 14px 10px 18px;display:flex;justify-content:flex-end;align-items:center;gap:8px}
+.detail-actions button{min-height:32px;padding:0 10px;border:1px solid #3a3d36;color:var(--color-bone);font:500 8px var(--font-mono);text-transform:uppercase}
+.detail-actions button:hover{border-color:var(--color-flare);color:var(--color-flare)}
+.row-actions .danger-action,.detail-actions .danger-action{border-color:#5e3c34;color:#c88372}
+.row-actions .danger-action:hover,.detail-actions .danger-action:hover{border-color:#c65d43;color:#e29b87}
+.row-actions .danger-action:disabled,.detail-actions .danger-action:disabled{opacity:.5;cursor:wait}
+
+@media(max-width:760px){.detail-grid{grid-template-columns:1fr}.detail-grid>div,.detail-grid>div:nth-child(even){border-right:0}.detail-grid>div.wide{grid-column:auto}.detail-actions{justify-content:stretch}.detail-actions button{flex:1}}

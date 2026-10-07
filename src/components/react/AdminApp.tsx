@@ -4,12 +4,14 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
 import { PAYMENT_METHODS, paymentInformation } from '../../lib/payment';
@@ -242,30 +244,87 @@ function Dashboard() {
 }
 
 function Clients() {
-  const blank = { name: '', picName: '', email: '', whatsapp: '', address: '', notes: '' };
+  const blank = { name: '', picName: '', email: '', whatsapp: '', address: '', status: 'active', notes: '' };
   const [clients, setClients] = useState<any[]>([]);
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [viewing, setViewing] = useState<any>(null);
   const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState('');
 
   const load = () => readCollection('clients').then(setClients);
   useEffect(() => { load().catch(console.error); }, []);
 
+  const openCreate = () => {
+    setEditing(null);
+    setViewing(null);
+    setForm(blank);
+    setShowForm(true);
+  };
+
+  const openEdit = (item: any) => {
+    setEditing(item);
+    setViewing(null);
+    setForm({
+      name: item.name || '',
+      picName: item.picName || '',
+      email: item.email || '',
+      whatsapp: item.whatsapp || '',
+      address: item.address || '',
+      status: item.status || 'active',
+      notes: item.notes || '',
+    });
+    setShowForm(true);
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    await addDoc(collection(db, 'clients'), {
-      ...form,
-      clientCode: 'CLI-' + Date.now().toString().slice(-6),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setForm(blank);
-    setShowForm(false);
-    await load();
+    setBusy(editing?.id || 'create');
+    try {
+      const payload = {
+        ...form,
+        updatedAt: serverTimestamp(),
+      };
+      if (editing) {
+        await updateDoc(doc(db, 'clients', editing.id), payload);
+      } else {
+        await addDoc(collection(db, 'clients'), {
+          ...payload,
+          clientCode: 'CLI-' + Date.now().toString().slice(-6),
+          createdAt: serverTimestamp(),
+        });
+      }
+      setForm(blank);
+      setEditing(null);
+      setShowForm(false);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const remove = async (item: any) => {
+    const [projectRows, invoiceRows] = await Promise.all([readCollection('projects'), readCollection('invoices')]);
+    const projectCount = projectRows.filter((row) => row.clientId === item.id).length;
+    const invoiceCount = invoiceRows.filter((row) => row.clientId === item.id).length;
+    if (projectCount || invoiceCount) {
+      window.alert('Klien belum dapat dihapus karena masih terhubung ke ' + projectCount + ' proyek dan ' + invoiceCount + ' invoice. Hapus atau pindahkan data terkait terlebih dahulu.');
+      return;
+    }
+    if (!window.confirm('Hapus klien "' + item.name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+    setBusy(item.id);
+    try {
+      await deleteDoc(doc(db, 'clients', item.id));
+      if (viewing?.id === item.id) setViewing(null);
+      await load();
+    } finally {
+      setBusy('');
+    }
   };
 
   const rows = clients.filter((item) => {
-    return (String(item.name) + ' ' + String(item.picName) + ' ' + String(item.email))
+    return (String(item.name) + ' ' + String(item.picName) + ' ' + String(item.email) + ' ' + String(item.status))
       .toLowerCase()
       .includes(search.toLowerCase());
   });
@@ -276,32 +335,54 @@ function Clients() {
         eyebrow="03 / Clients"
         title="Klien"
         description="Kontak dan identitas pihak yang bekerja bersama Nalaro."
-        action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Klien baru</button>}
+        action={<button className="primary-button" onClick={openCreate}>+ Klien baru</button>}
       />
+
+      {viewing && (
+        <section className="detail-panel">
+          <div className="editor-title">
+            <div><small>{viewing.clientCode || viewing.id.slice(0, 8)}</small><strong>{viewing.name}</strong></div>
+            <button type="button" onClick={() => setViewing(null)}>Tutup ×</button>
+          </div>
+          <div className="detail-grid">
+            <div><span>Status</span><strong>{String(viewing.status || 'active').replaceAll('_', ' ')}</strong></div>
+            <div><span>PIC</span><strong>{viewing.picName || '—'}</strong></div>
+            <div><span>Email</span><strong>{viewing.email || '—'}</strong></div>
+            <div><span>WhatsApp</span><strong>{viewing.whatsapp || '—'}</strong></div>
+            <div className="wide"><span>Alamat</span><p>{viewing.address || '—'}</p></div>
+            <div className="wide"><span>Catatan</span><p>{viewing.notes || '—'}</p></div>
+          </div>
+          <div className="detail-actions">
+            <button onClick={() => openEdit(viewing)}>Edit klien</button>
+            <button className="danger-action" disabled={busy === viewing.id} onClick={() => remove(viewing)}>{busy === viewing.id ? 'Menghapus…' : 'Hapus'}</button>
+          </div>
+        </section>
+      )}
 
       {showForm && (
         <form className="editor-panel" onSubmit={submit}>
-          <div className="editor-title"><strong>Klien baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
+          <div className="editor-title"><strong>{editing ? 'Edit klien' : 'Klien baru'}</strong><button type="button" onClick={() => { setShowForm(false); setEditing(null); setForm(blank); }}>Tutup ×</button></div>
           <div className="form-grid">
             <label><span>Nama klien / perusahaan *</span><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
             <label><span>Nama PIC *</span><input required value={form.picName} onChange={(e) => setForm({ ...form, picName: e.target.value })} /></label>
             <label><span>Email</span><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
             <label><span>WhatsApp</span><input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} /></label>
+            <label><span>Status</span><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">Active</option><option value="inactive">Inactive</option><option value="lead">Lead</option></select></label>
             <label className="wide"><span>Alamat</span><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></label>
             <label className="wide"><span>Catatan</span><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           </div>
-          <div className="form-actions"><button className="primary-button" type="submit">Simpan klien</button></div>
+          <div className="form-actions"><button disabled={!!busy} className="primary-button" type="submit">{busy ? 'Menyimpan…' : editing ? 'Simpan perubahan' : 'Simpan klien'}</button></div>
         </form>
       )}
 
       <div className="toolbar">
-        <input className="search-field" placeholder="Cari nama, PIC, atau email…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="search-field" placeholder="Cari nama, PIC, email, atau status…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span>{rows.length} record</span>
       </div>
 
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Kode</th><th>Klien</th><th>PIC</th><th>Kontak</th></tr></thead>
+          <thead><tr><th>Kode</th><th>Klien</th><th>PIC</th><th>Kontak</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>
             {rows.map((item) => (
               <tr key={item.id}>
@@ -309,6 +390,8 @@ function Clients() {
                 <td><strong>{item.name}</strong></td>
                 <td>{item.picName || '—'}</td>
                 <td><span>{item.email || item.whatsapp || '—'}</span></td>
+                <td><span className={statusClass(item.status || 'active')}>{item.status || 'active'}</span></td>
+                <td><div className="row-actions"><button onClick={() => { setViewing(item); setShowForm(false); }}>View</button><button onClick={() => openEdit(item)}>Edit</button><button className="danger-action" disabled={busy === item.id} onClick={() => remove(item)}>Delete</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -334,7 +417,10 @@ function Projects() {
   const [clients, setClients] = useState<any[]>([]);
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [viewing, setViewing] = useState<any>(null);
   const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState('');
 
   const load = async () => {
     const [projectRows, clientRows] = await Promise.all([readCollection('projects'), readCollection('clients')]);
@@ -343,30 +429,85 @@ function Projects() {
   };
   useEffect(() => { load().catch(console.error); }, []);
 
+  const openCreate = () => {
+    setEditing(null);
+    setViewing(null);
+    setForm(blank);
+    setShowForm(true);
+  };
+
+  const openEdit = (item: any) => {
+    setEditing(item);
+    setViewing(null);
+    setForm({
+      name: item.name || '',
+      clientId: item.clientId || '',
+      serviceType: item.serviceType || 'Website Development',
+      receivedDate: item.receivedDate || today(),
+      deadline: item.deadline || '',
+      status: item.status || 'planning',
+      value: String(item.value ?? ''),
+      description: item.description || '',
+    });
+    setShowForm(true);
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const client = clients.find((item) => item.id === form.clientId);
-    await addDoc(collection(db, 'projects'), {
-      projectNumber: documentNumber('PRJ'),
-      name: form.name,
-      clientId: form.clientId,
-      clientName: client?.name || '',
-      serviceType: form.serviceType,
-      receivedDate: form.receivedDate,
-      deadline: form.deadline,
-      status: form.status,
-      value: Number(form.value || 0),
-      description: form.description,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setForm(blank);
-    setShowForm(false);
-    await load();
+    if (!client) return;
+    setBusy(editing?.id || 'create');
+    try {
+      const payload = {
+        name: form.name,
+        clientId: form.clientId,
+        clientName: client.name || '',
+        serviceType: form.serviceType,
+        receivedDate: form.receivedDate,
+        deadline: form.deadline,
+        status: form.status,
+        value: Number(form.value || 0),
+        description: form.description,
+        updatedAt: serverTimestamp(),
+      };
+      if (editing) {
+        await updateDoc(doc(db, 'projects', editing.id), payload);
+      } else {
+        await addDoc(collection(db, 'projects'), {
+          ...payload,
+          projectNumber: documentNumber('PRJ'),
+          createdAt: serverTimestamp(),
+        });
+      }
+      setForm(blank);
+      setEditing(null);
+      setShowForm(false);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const remove = async (item: any) => {
+    const invoiceRows = await readCollection('invoices');
+    const linked = invoiceRows.filter((row) => row.projectId === item.id);
+    if (linked.length) {
+      window.alert('Proyek belum dapat dihapus karena masih memiliki ' + linked.length + ' invoice. Hapus invoice terkait terlebih dahulu.');
+      return;
+    }
+    if (!window.confirm('Hapus proyek "' + item.name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+    setBusy(item.id);
+    try {
+      await deleteDoc(doc(db, 'projects', item.id));
+      if (viewing?.id === item.id) setViewing(null);
+      await load();
+    } finally {
+      setBusy('');
+    }
   };
 
   const rows = projects.filter((item) => {
-    return (String(item.name) + ' ' + String(item.clientName) + ' ' + String(item.projectNumber))
+    return (String(item.name) + ' ' + String(item.clientName) + ' ' + String(item.projectNumber) + ' ' + String(item.status))
       .toLowerCase()
       .includes(search.toLowerCase());
   });
@@ -377,12 +518,34 @@ function Projects() {
         eyebrow="02 / Projects"
         title="Proyek"
         description="Catat pekerjaan dari tanggal masuk sampai selesai."
-        action={<button className="primary-button" onClick={() => setShowForm((value) => !value)}>+ Proyek baru</button>}
+        action={<button className="primary-button" onClick={openCreate}>+ Proyek baru</button>}
       />
+
+      {viewing && (
+        <section className="detail-panel">
+          <div className="editor-title">
+            <div><small>{viewing.projectNumber || viewing.id.slice(0, 8)}</small><strong>{viewing.name}</strong></div>
+            <button type="button" onClick={() => setViewing(null)}>Tutup ×</button>
+          </div>
+          <div className="detail-grid">
+            <div><span>Klien</span><strong>{viewing.clientName || '—'}</strong></div>
+            <div><span>Status</span><strong>{String(viewing.status || 'planning').replaceAll('_', ' ')}</strong></div>
+            <div><span>Layanan</span><strong>{viewing.serviceType || '—'}</strong></div>
+            <div><span>Nilai</span><strong>{money(viewing.value)}</strong></div>
+            <div><span>Tanggal masuk</span><strong>{showDate(viewing.receivedDate)}</strong></div>
+            <div><span>Deadline</span><strong>{showDate(viewing.deadline)}</strong></div>
+            <div className="wide"><span>Keterangan / deskripsi</span><p>{viewing.description || '—'}</p></div>
+          </div>
+          <div className="detail-actions">
+            <button onClick={() => openEdit(viewing)}>Edit proyek</button>
+            <button className="danger-action" disabled={busy === viewing.id} onClick={() => remove(viewing)}>{busy === viewing.id ? 'Menghapus…' : 'Hapus'}</button>
+          </div>
+        </section>
+      )}
 
       {showForm && (
         <form className="editor-panel" onSubmit={submit}>
-          <div className="editor-title"><strong>Proyek baru</strong><button type="button" onClick={() => setShowForm(false)}>Tutup ×</button></div>
+          <div className="editor-title"><strong>{editing ? 'Edit proyek' : 'Proyek baru'}</strong><button type="button" onClick={() => { setShowForm(false); setEditing(null); setForm(blank); }}>Tutup ×</button></div>
           <div className="form-grid">
             <label><span>Nama proyek *</span><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
             <label><span>Klien *</span><select required value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })}><option value="">Pilih klien</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -391,20 +554,20 @@ function Projects() {
             <label><span>Tanggal masuk</span><input type="date" value={form.receivedDate} onChange={(e) => setForm({ ...form, receivedDate: e.target.value })} /></label>
             <label><span>Deadline</span><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} /></label>
             <label><span>Status</span><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="planning">Planning</option><option value="in_progress">In Progress</option><option value="review">Review</option><option value="on_hold">On Hold</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
-            <label className="wide"><span>Deskripsi</span><textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+            <label className="wide"><span>Keterangan / deskripsi</span><textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
           </div>
-          <div className="form-actions"><button className="primary-button" type="submit">Simpan proyek</button></div>
+          <div className="form-actions"><button disabled={!!busy} className="primary-button" type="submit">{busy ? 'Menyimpan…' : editing ? 'Simpan perubahan' : 'Simpan proyek'}</button></div>
         </form>
       )}
 
       <div className="toolbar">
-        <input className="search-field" placeholder="Cari proyek, klien, atau nomor…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="search-field" placeholder="Cari proyek, klien, nomor, atau status…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span>{rows.length} project</span>
       </div>
 
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Proyek</th><th>Klien</th><th>Layanan</th><th>Deadline</th><th>Nilai</th><th>Status</th></tr></thead>
+          <thead><tr><th>Proyek</th><th>Klien</th><th>Layanan</th><th>Deadline</th><th>Nilai</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody>
             {rows.map((item) => (
               <tr key={item.id}>
@@ -414,6 +577,7 @@ function Projects() {
                 <td>{showDate(item.deadline)}</td>
                 <td>{money(item.value)}</td>
                 <td><span className={statusClass(item.status)}>{String(item.status || '').replaceAll('_', ' ')}</span></td>
+                <td><div className="row-actions"><button onClick={() => { setViewing(item); setShowForm(false); }}>View</button><button onClick={() => openEdit(item)}>Edit</button><button className="danger-action" disabled={busy === item.id} onClick={() => remove(item)}>Delete</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -550,6 +714,27 @@ function Invoices() {
     const client = clients.find((item) => item.id === invoice.clientId) || invoice.clientSnapshot || { name: invoice.clientName };
     const project = projects.find((item) => item.id === invoice.projectId) || { name: invoice.projectName };
     await downloadPDF(invoice.id, 'invoice', invoice, client, project, settings);
+  };
+
+  const deleteInvoice = async (invoice: any) => {
+    const relatedPayments = payments.filter((item) => item.invoiceId === invoice.id);
+    const paymentIds = new Set(relatedPayments.map((item) => item.id));
+    const relatedReceipts = receipts.filter((item) => item.invoiceId === invoice.id || paymentIds.has(item.paymentId));
+    const warning = relatedPayments.length || relatedReceipts.length
+      ? ' Invoice ini memiliki ' + relatedPayments.length + ' pembayaran dan ' + relatedReceipts.length + ' receipt terkait. Data terkait juga akan dihapus.'
+      : '';
+    if (!window.confirm('Hapus invoice "' + invoice.invoiceNumber + '"?' + warning + ' Tindakan ini tidak dapat dibatalkan.')) return;
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'invoices', invoice.id));
+    if (invoice.publicToken) batch.delete(doc(db, 'public_documents', invoice.publicToken));
+    relatedPayments.forEach((payment) => batch.delete(doc(db, 'payments', payment.id)));
+    relatedReceipts.forEach((receipt) => {
+      batch.delete(doc(db, 'receipts', receipt.id));
+      if (receipt.publicToken) batch.delete(doc(db, 'public_documents', receipt.publicToken));
+    });
+    await batch.commit();
+    await load();
   };
 
   const recordPayment = async (event: React.FormEvent) => {
@@ -716,6 +901,7 @@ function Invoices() {
                       )}
                       {latestPayment && !hasReceipt && <button onClick={() => issueReceipt(invoice)}>Receipt</button>}
                       {hasReceipt && <span>Receipt ✓</span>}
+                      <button className="danger-action" onClick={() => deleteInvoice(invoice)}>Hapus</button>
                     </div>
                   </td>
                 </tr>
@@ -735,23 +921,25 @@ function Receipts() {
   const [projects, setProjects] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const [deleting, setDeleting] = useState('');
   const { downloading, downloadError, downloadPDF } = usePdfDownload();
 
-  useEffect(() => {
-    Promise.all([
+  const load = async () => {
+    const [receiptRows, clientRows, projectRows, invoiceRows, settingSnap] = await Promise.all([
       readCollection('receipts'),
       readCollection('clients'),
       readCollection('projects'),
       readCollection('invoices'),
       getDoc(doc(db, 'settings', 'general')),
-    ]).then(([receiptRows, clientRows, projectRows, invoiceRows, settingSnap]) => {
-      setReceipts(receiptRows as any[]);
-      setClients(clientRows as any[]);
-      setProjects(projectRows as any[]);
-      setInvoices(invoiceRows as any[]);
-      if ((settingSnap as any).exists()) setSettings((settingSnap as any).data());
-    }).catch(console.error);
-  }, []);
+    ]);
+    setReceipts(receiptRows as any[]);
+    setClients(clientRows as any[]);
+    setProjects(projectRows as any[]);
+    setInvoices(invoiceRows as any[]);
+    if ((settingSnap as any).exists()) setSettings((settingSnap as any).data());
+  };
+
+  useEffect(() => { load().catch(console.error); }, []);
 
   const download = async (receipt: any) => {
     const invoice = invoices.find((item) => item.id === receipt.invoiceId);
@@ -760,13 +948,27 @@ function Receipts() {
     await downloadPDF(receipt.id, 'receipt', receipt, client, project, settings);
   };
 
+  const remove = async (receipt: any) => {
+    if (!window.confirm('Hapus receipt "' + receipt.receiptNumber + '"? Pembayaran asli tidak dihapus dan receipt dapat diterbitkan kembali dari invoice.')) return;
+    setDeleting(receipt.id);
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'receipts', receipt.id));
+      if (receipt.publicToken) batch.delete(doc(db, 'public_documents', receipt.publicToken));
+      await batch.commit();
+      await load();
+    } finally {
+      setDeleting('');
+    }
+  };
+
   return (
     <section className="admin-page">
       <PageHeader eyebrow="05 / Receipts" title="Receipt" description="Bukti pembayaran yang telah diterbitkan oleh Nalaro." />
       {downloadError && <p className="document-error" role="alert">{downloadError}</p>}
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th></th></tr></thead>
+          <thead><tr><th>Receipt</th><th>Klien</th><th>Invoice</th><th>Pembayaran</th><th>Metode</th><th>Aksi</th></tr></thead>
           <tbody>
             {receipts.map((receipt) => (
               <tr key={receipt.id}>
@@ -775,7 +977,7 @@ function Receipts() {
                 <td>{receipt.relatedInvoice || '—'}</td>
                 <td>{money(receipt.amount)}</td>
                 <td>{receipt.paymentMethod || '—'}</td>
-                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button></div></td>
+                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button><button className="danger-action" disabled={deleting === receipt.id} onClick={() => remove(receipt)}>{deleting === receipt.id ? 'Menghapus…' : 'Hapus'}</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -937,7 +1139,7 @@ function Settings() {
         </div>
         <div className="editor-title subsection"><strong>Verifikasi dokumen</strong></div>
         <div className="form-grid">
-          <label className="wide"><span>URL dasar verifikasi</span><input type="url" placeholder={typeof window !== 'undefined' ? window.location.origin + '/verif/' : 'https://alamat-aplikasi/verif/'} value={form.verificationBaseUrl} onChange={(e) => setForm({ ...form, verificationBaseUrl: e.target.value })} /><small>Kosongkan untuk memakai alamat aplikasi ini. Jika diisi, gunakan halaman verifikasi yang aktif, misalnya https://alamat-aplikasi/verif/.</small></label>
+          <label className="wide"><span>URL dasar verifikasi</span><input type="url" placeholder={typeof window !== 'undefined' ? window.location.origin + '/verifi/' : 'https://alamat-aplikasi/verifi/'} value={form.verificationBaseUrl} onChange={(e) => setForm({ ...form, verificationBaseUrl: e.target.value })} /><small>Kosongkan untuk memakai alamat aplikasi ini. Jika diisi, gunakan halaman verifikasi yang aktif, misalnya https://alamat-aplikasi/verifi/.</small></label>
         </div>
         <div className="form-actions"><button disabled={saving} className="primary-button" type="submit">{saving ? 'Menyimpan…' : 'Simpan pengaturan'}</button></div>
       </form>
