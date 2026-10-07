@@ -34,10 +34,10 @@ Pada 7 Oktober 2026, layanan berikut telah dibuat melalui akun Cloudflare yang t
 
 - Worker: `nalaro-mailbox`, origin `https://nalaro-mailbox.uniquefactuhl.workers.dev`.
 - Bucket R2: `nalaro-mailbox`, lokasi APAC, binding `MAIL_BUCKET`.
-- Variabel Worker: project Firebase `nalaro`, admin `admin@nalaro.digital`, nama pengirim `Nalaro`, tiga alamat mailbox, dan dua origin frontend yang diizinkan.
-- Email Routing domain `nalaro.digital` telah diaktifkan, dengan aturan hello/admin/billing menuju Worker.
+- Variabel Worker: project Firebase `nalaro`, admin `admin@nalaro.digital`, nama pengirim `Nalaro`, lima alamat mailbox, dan dua origin frontend yang diizinkan.
+- Email Routing domain `nalaro.digital` telah diaktifkan, dengan aturan hello/admin/billing/business/khoirululum menuju Worker.
 - Pages project `nalaro-trans` telah mendapat `PUBLIC_MAILBOX_API_URL` untuk production dan preview. Variabel Firebase sebelumnya dipertahankan.
-- Secret `RESEND_API_KEY` sengaja belum diisi; pemilik akan menambahkannya sendiri.
+- Secret `RESEND_API_KEY` dikelola sendiri oleh pemilik melalui dashboard Worker; nilainya tidak disimpan dalam repository.
 
 Konfigurasi frontend berlaku pada build Pages berikutnya. Halaman Mail Desk dirilis melalui branch production `main` pada repository `hulumzz/nalaro-trans` dengan Git integration Cloudflare Pages.
 
@@ -65,7 +65,7 @@ Penerimaan domain utama memakai **Cloudflare Email Routing**. Jangan mengaktifka
 | `FIREBASE_PROJECT_ID` | Variable | `nalaro`, harus sama dengan project Firebase frontend |
 | `ADMIN_EMAIL` | Variable | `admin@nalaro.digital`, harus sama dengan email login admin |
 | `ADMIN_UID` | Variable opsional | UID akun admin Firebase; disarankan untuk mengikat akses ke identitas admin yang sama |
-| `MAILBOX_ADDRESSES` | Variable | `hello@nalaro.digital,admin@nalaro.digital,billing@nalaro.digital` |
+| `MAILBOX_ADDRESSES` | Variable | `hello@nalaro.digital,admin@nalaro.digital,billing@nalaro.digital,business@nalaro.digital,khoirululum@nalaro.digital` |
 | `MAIL_FROM_NAME` | Variable opsional | `Nalaro` |
 | `ALLOWED_ORIGINS` | Variable | `https://order.nalaro.digital`; beberapa origin dipisahkan koma, tanpa slash terakhir |
 | `RESEND_API_KEY` | **Secret** | API key pengiriman Resend |
@@ -77,7 +77,7 @@ Catat origin Worker, misalnya `https://nalaro-mailbox.NAMA-AKUN.workers.dev`. Cu
 ## 3. Hubungkan Cloudflare Email Routing
 
 1. Aktifkan Email Routing untuk `nalaro.digital`, dan terapkan record DNS yang diminta Cloudflare.
-2. Buat custom address untuk setiap alamat yang dipakai, misalnya `hello`, `admin`, dan `billing`.
+2. Buat custom address untuk setiap alamat yang dipakai, yaitu `hello`, `admin`, `billing`, `business`, dan `khoirululum`.
 3. Atur action setiap custom address menjadi **Send to a Worker**, lalu pilih Worker mailbox tadi.
 4. Daftar alamat pada Email Routing harus cocok dengan `MAILBOX_ADDRESSES`. Alamat di luar daftar ditolak oleh Worker.
 5. Catch-all bersifat opsional; untuk tahap awal gunakan alamat eksplisit agar mudah dikelola.
