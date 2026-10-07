@@ -336,7 +336,7 @@ export async function buildReceiptPDF(receipt: any, client: any, project: any, s
   const partyBottom = partyBlock(
     doc,
     'Received from',
-    [client?.name || receipt.clientName, client?.picName, client?.address],
+    [client?.name || receipt.clientName, client?.picName],
     'Received by',
     [settings?.businessName || 'Nalaro', settings?.ownerName || 'Muhamad Khoirul Ulum'],
   );
