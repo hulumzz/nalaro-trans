@@ -24,11 +24,13 @@ export interface MailboxService {
   remove(mailbox: string, id: string): Promise<void>;
   file(mailbox: string, id: string, attachmentId?: string): Promise<Blob>;
 }
-export const MAILBOX_CONFIGURED = !!import.meta.env.PUBLIC_MAILBOX_API_URL?.trim();
+
+const DEFAULT_MAILBOX_API_URL = 'https://nalaro-mailbox.uniquefactuhl.workers.dev';
+const mailboxApiRoot = () => import.meta.env.PUBLIC_MAILBOX_API_URL?.trim() || DEFAULT_MAILBOX_API_URL;
+
+export const MAILBOX_CONFIGURED = !!mailboxApiRoot();
 function apiUrl(path: string, values: Record<string, string> = {}) {
-  const configured = import.meta.env.PUBLIC_MAILBOX_API_URL?.trim();
-  if (!configured) throw new Error('Mailbox belum diaktifkan. Konfigurasikan layanan email terlebih dahulu.');
-  const root = new URL(configured);
+  const root = new URL(mailboxApiRoot());
   if (root.protocol !== 'https:' && !(root.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(root.hostname))) throw new Error('Alamat layanan mailbox harus memakai HTTPS.');
   const url = new URL('/api/mail' + path, root.origin);
   Object.entries(values).forEach(([key, value]) => { if (value) url.searchParams.set(key, value); });
@@ -44,7 +46,7 @@ async function request(path: string, values: Record<string, string> = {}, method
   });
   let response: Response;
   try { response = await perform(false); if (response.status === 401) response = await perform(true); }
-  catch (error) { throw new Error(error instanceof Error && !MAILBOX_CONFIGURED ? error.message : 'Layanan email tidak terjangkau. Periksa koneksi dan konfigurasi mailbox.'); }
+  catch { throw new Error('Layanan email tidak terjangkau. Periksa koneksi dan konfigurasi mailbox.'); }
   if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.error || 'Permintaan mailbox gagal.'); }
   return response;
 }
