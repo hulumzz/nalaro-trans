@@ -39,7 +39,8 @@ try {
   assert.equal(await page.getByLabel('Nama proyek *').inputValue(), 'Proyek Pengujian');
   await page.context().setOffline(false);
   await page.goto(origin + '/admin/projects');
-  await page.waitForURL('**/login*');
+  // Pages canonicalizes the login directory with a trailing slash.
+  await page.waitForURL(/\/login\/?$/);
   assert.equal(await page.getByLabel('Email admin').inputValue(), 'admin@nalaro.digital');
   assert.deepEqual(errors, []);
   console.log('PASS: Pages public deep links, legacy verification, 320/390/1440px forms, contact validation, offline feedback, admin guard and email.');
