@@ -13,7 +13,7 @@ npm run check
 npm run build
 ```
 
-Cloudflare Pages: build command `npm run build`, output directory `dist` (juga ditetapkan pada `wrangler.jsonc`). Aturan `public/_redirects` melayani `/admin/*`, `/verifi/*`, `/verif/*`, dan `/form/*` melalui halaman tujuan yang berbeda dari pola sumber, sehingga rewrite tidak berulang. Halaman root juga mengenali URL publik jika hosting memakai fallback SPA.
+Cloudflare Pages: build command `npm run build`, output directory `dist` (juga ditetapkan pada `wrangler.jsonc`). Aturan `public/_redirects` melayani `/admin/*`, `/verifi/*`, `/verif/*`, dan `/form/*` melalui URL direktori tujuan yang berbeda dari pola sumber. Target tidak memakai `/index.html` agar diterima parser routing Cloudflare Pages. Halaman root juga mengenali URL publik dan URL admin jika hosting memakai fallback SPA; akses admin tetap dilindungi login.
 
 ## Form order dan akun admin
 

@@ -38,6 +38,11 @@ try {
   await page.getByRole('alert').filter({ hasText: 'offline' }).waitFor();
   assert.equal(await page.getByLabel('Nama proyek *').inputValue(), 'Proyek Pengujian');
   await page.context().setOffline(false);
+  const mailResponse = await page.request.get(origin + '/admin/email');
+  assert.equal(mailResponse.status(), 200);
+  assert.match(await mailResponse.text(), /AdminApp|EntryApp/, 'Email deep link must load the application shell');
+  await page.goto(origin + '/admin/email');
+  await page.waitForURL(/\/login\/?$/);
   await page.goto(origin + '/admin/projects');
   // Pages canonicalizes the login directory with a trailing slash.
   await page.waitForURL(/\/login\/?$/);
