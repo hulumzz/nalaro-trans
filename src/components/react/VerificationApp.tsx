@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { verificationToken } from '../../lib/verification';
 
 function formatCurrency(value = 0) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0);
@@ -15,8 +16,7 @@ function formatDate(value: any) {
 
 function tokenFromPath() {
   if (typeof window === 'undefined') return '';
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  return parts[0] === 'verif' ? (parts[1] || '') : '';
+  return verificationToken(window.location);
 }
 
 export default function VerificationApp({ token: providedToken }: { token?: string }) {
@@ -96,7 +96,7 @@ export default function VerificationApp({ token: providedToken }: { token?: stri
 
         <footer className="registry-foot">
           <p>{voided ? 'Dokumen ditemukan di registry, tetapi sudah dibatalkan atau dinyatakan tidak berlaku.' : 'Dokumen ini tercatat pada registry publik Nalaro. Informasi sensitif tidak ditampilkan pada halaman verifikasi.'}</p>
-          <span>e-invoice.nalaro.web.id</span>
+          <span>{typeof window !== 'undefined' ? window.location.host : 'Nalaro'}</span>
         </footer>
       </article>
       <div className="verification-note"><span>↳</span> Verifikasi dilakukan langsung dari registry publik Nalaro.</div>
