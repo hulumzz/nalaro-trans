@@ -16,6 +16,7 @@ import {
 import { auth, db } from '../../lib/firebase';
 import { PAYMENT_METHODS, paymentInformation } from '../../lib/payment';
 import { verificationBaseUrl } from '../../lib/verification';
+import { brandContact, NALARO_EMAIL, NALARO_WEBSITE } from '../../lib/brand';
 
 import { ADMIN_EMAIL } from '../../lib/admin';
 const Mailbox = React.lazy(() => import('./Mailbox'));
@@ -1062,8 +1063,8 @@ function Settings() {
   const defaults = {
     businessName: 'Nalaro',
     ownerName: 'Muhamad Khoirul Ulum',
-    email: '',
-    website: 'https://nalaro.digital',
+    email: NALARO_EMAIL,
+    website: NALARO_WEBSITE,
     address: '',
     bankName: '',
     accountNumber: '',
@@ -1086,7 +1087,7 @@ function Settings() {
       if (snap.exists()) {
         const data = snap.data();
         if (data.verificationBaseUrl === 'https://e-invoice.nalaro.digital/verif/' && window.location.hostname !== 'e-invoice.nalaro.digital') data.verificationBaseUrl = '';
-        setForm((current) => ({ ...current, ...data }));
+        setForm((current) => ({ ...current, ...data, ...brandContact(data) }));
       }
     }).catch(console.error);
   }, []);
@@ -1120,6 +1121,7 @@ function Settings() {
       verificationBaseUrl(form);
       await setDoc(doc(db, 'settings', 'general'), {
         ...form,
+        ...brandContact(form),
         updatedAt: serverTimestamp(),
       }, { merge: true });
       setSaved(true);

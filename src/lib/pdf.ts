@@ -2,17 +2,19 @@ import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { documentPaymentInformation } from './payment';
 import { verificationUrl } from './verification';
+import { brandContact, NALARO_WEBSITE } from './brand';
 
 const INK: [number, number, number] = [28, 29, 27];
 const MUTED: [number, number, number] = [117, 118, 114];
 const LINE: [number, number, number] = [221, 221, 216];
 const PAPER: [number, number, number] = [244, 244, 241];
 const FLARE: [number, number, number] = [255, 91, 46];
+const GREEN: [number, number, number] = [27, 128, 74];
 const WHITE: [number, number, number] = [255, 255, 255];
 const LEFT = 16;
 const RIGHT = 194;
 const WIDTH = RIGHT - LEFT;
-const PUBLIC_SITE = 'https://www.nalaro.one';
+const PUBLIC_SITE = NALARO_WEBSITE;
 
 const money = (value: unknown = 0) => new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -182,17 +184,19 @@ function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string, s
   setText(doc, 19.5, 'bold', INK);
   doc.text('NALARO', 39, 20.2);
   setText(doc, 6.8, 'normal', MUTED);
-  doc.text(settings?.website || 'https://nalaro.digital', 39, 26.1);
+  doc.text(brandContact(settings).website, 39, 26.1);
 
   setText(doc, 20, 'bold', FLARE);
-  doc.text(title, RIGHT, 19.2, { align: 'right' });
+  const titleCenter = RIGHT - doc.getTextWidth(title) / 2;
+  doc.text(title, titleCenter, 19.2, { align: 'center' });
 
-  const pill = String(status || '').toUpperCase();
-  const pillWidth = Math.max(18, doc.getTextWidth(pill) + 9);
-  doc.setFillColor(...INK);
-  doc.roundedRect(RIGHT - pillWidth, 22.6, pillWidth, 7.3, 3.2, 3.2, 'F');
-  setText(doc, 6.3, 'bold', WHITE);
-  doc.text(pill, RIGHT - pillWidth / 2, 27.5, { align: 'center' });
+  const pill = String(status || '').trim().toUpperCase();
+  const unpaid = ['UNPAID', 'PARTIALLY PAID', 'OVERDUE'].includes(pill);
+  setText(doc, 6.3, 'bold', unpaid ? INK : WHITE);
+  const pillWidth = Math.max(20, doc.getTextWidth(pill) + 10);
+  doc.setFillColor(...(pill === 'PAID' ? GREEN : unpaid ? FLARE : INK));
+  doc.roundedRect(titleCenter - pillWidth / 2, 22.6, pillWidth, 7.3, 3.2, 3.2, 'F');
+  doc.text(pill, titleCenter, 27.5, { align: 'center' });
 }
 
 function drawWatermark(doc: jsPDF, assets: Assets, y = 118) {
@@ -205,7 +209,7 @@ function drawFooter(doc: jsPDF, message: string, settings: any = {}) {
   setText(doc, 6.6, 'normal', MUTED);
   doc.text('Nalaro', LEFT, 284);
   doc.text(message, 105, 284, { align: 'center' });
-  doc.text(settings?.email || 'business@nalaro.digital', RIGHT, 284, { align: 'right' });
+  doc.text(brandContact(settings).email, RIGHT, 284, { align: 'right' });
   setText(doc, 6.4, 'normal', MUTED);
   doc.text(PUBLIC_SITE, 105, 290, { align: 'center' });
   doc.link(86, 286.5, 38, 5.5, { url: PUBLIC_SITE });
