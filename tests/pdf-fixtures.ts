@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 const token = '12345678901234567890';
 const client = { name: 'Pemerintah Desa Contoh', picName: 'Bapak Petugas Administrasi', address: 'Jalan Raya Contoh No. 10, Kecamatan Contoh, Kabupaten Pekalongan' };
 const project = { name: 'Pembuatan Website Desa dan Layanan Administrasi Digital', projectNumber: 'NAL/PRJ/2026/123456' };
-const settings = { businessName: 'Nalaro', ownerName: 'Muhamad Khoirul Ulum', website: 'nalaro.web.id', bankName: 'BANK CONTOH', accountNumber: '000123456789', accountHolder: 'Penerima Contoh', qrisMerchantName: 'NALARO DEMO', walletName: 'Wallet Contoh', walletNumber: '081234567890', walletHolder: 'Penerima Contoh' };
+const settings = { businessName: 'Nalaro', ownerName: 'Muhamad Khoirul Ulum', website: 'https://www.nalaro.one', bankName: 'BANK CONTOH', accountNumber: '000123456789', accountHolder: 'Penerima Contoh', qrisMerchantName: 'NALARO DEMO', walletName: 'Wallet Contoh', walletNumber: '081234567890', walletHolder: 'Penerima Contoh' };
 const invoice = { invoiceNumber: 'NAL/INV/2026/TEST', publicToken: token, issueDate: '2026-10-06', dueDate: '2026-10-20', items: [{ description: 'Website Development', details: 'Desain dan implementasi website desa.', quantity: 1, unitPrice: 2500000, total: 2500000 }], subtotal: 2500000, grandTotal: 2500000, paymentMethod: 'Bank Transfer' };
 const receipt = { receiptNumber: 'NAL/RCPT/2026/TEST', relatedInvoice: invoice.invoiceNumber, publicToken: token, paymentDate: '2026-10-06', amount: 2500000, paymentMethod: 'Bank Transfer', paymentReference: 'REF-123456' };
 
@@ -28,14 +28,14 @@ const api = {
   },
   async checks() {
     const origin = window.location.origin;
-    const expected = origin + '/verif/' + token;
+    const expected = origin + '/verifi/' + token;
     const actual = verificationUrl(token, { verificationBaseUrl: 'https://e-invoice.nalaro.web.id/verif/' });
     if (actual !== expected) throw new Error('Legacy URL migration failed');
-    if (verificationBaseUrl({ verificationBaseUrl: 'https://registry.example/verif' }) !== 'https://registry.example/verif/') throw new Error('Explicit base URL failed');
-    if (verificationToken({ pathname: '/verif/' + token + '/', search: '' }) !== token) throw new Error('Path token failed');
-    if (verificationToken({ pathname: '/verif/', search: '?token=' + token }) !== token) throw new Error('Query token failed');
+    if (verificationBaseUrl({ verificationBaseUrl: 'https://registry.example' }) !== 'https://registry.example/verifi/') throw new Error('Explicit base URL failed');
+    if (verificationToken({ pathname: '/verifi/' + token + '/', search: '' }) !== token) throw new Error('Path token failed');
+    if (verificationToken({ pathname: '/verifi/', search: '?token=' + token }) !== token) throw new Error('Query token failed');
     if (verificationUrl('') !== '') throw new Error('Missing token creates a misleading QR');
-    for (const invalid of ['javascript:alert(1)', 'https://user:password@example.com/verif/', 'https://example.com/verif/?token=bad']) {
+    for (const invalid of ['javascript:alert(1)', 'https://user:password@example.com/verifi/', 'https://example.com/verifi/?token=bad']) {
       let failed = false; try { verificationBaseUrl({ verificationBaseUrl: invalid }); } catch { failed = true; }
       if (!failed) throw new Error('Invalid verification URL accepted');
     }
@@ -43,14 +43,14 @@ const api = {
     const snapshot = paymentInformation('Bank Transfer', settings);
     if (documentPaymentInformation({ paymentDetails: snapshot }, { bankName: 'CHANGED' }).lines[0] !== 'BANK CONTOH') throw new Error('Issued payment destination changed');
     const logo = await new Promise<string>((resolve) => { const img = new Image(); img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d')!.drawImage(img, 0, 0); resolve(canvas.toDataURL()); }; img.src = '/android-chrome-192x192.png'; });
-    for (const size of [600, 300, 160]) {
+    for (const size of [600, 300, 180]) {
       const image = new Image(); image.src = await verificationQr(expected, logo); await image.decode();
       const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
       const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0, size, size);
       const pixels = context.getImageData(0, 0, size, size);
       if (jsQR(pixels.data, size, size)?.data !== expected) throw new Error('Logo QR cannot be decoded at ' + size + 'px');
     }
-    return { expected, qrSizes: [600, 300, 160] };
+    return { expected, qrSizes: [600, 300, 180] };
   },
 };
 (window as any).testAPI = api;
