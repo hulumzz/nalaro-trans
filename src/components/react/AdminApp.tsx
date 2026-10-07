@@ -18,6 +18,7 @@ import { PAYMENT_METHODS, paymentInformation } from '../../lib/payment';
 import { verificationBaseUrl } from '../../lib/verification';
 
 import { ADMIN_EMAIL } from '../../lib/admin';
+const Mailbox = React.lazy(() => import('./Mailbox'));
 
 function money(value: any = 0) {
   return new Intl.NumberFormat('id-ID', {
@@ -77,7 +78,28 @@ function usePdfDownload() {
       setDownloadError('PDF belum berhasil dibuat. ' + (error instanceof Error ? error.message : 'Coba unduh kembali.'));
     } finally { setDownloading(''); }
   };
-  return { downloading, downloadError, downloadPDF };
+  const emailPDF = async (id: string, kind: 'invoice' | 'receipt', record: any, client: any, project: any, settings: any) => {
+    if (downloading) return;
+    setDownloading(id); setDownloadError('');
+    try {
+      const mail = await import('../../lib/mailbox');
+      const config = await mail.mailboxService.config();
+      const mailbox = config.mailboxes.find((address) => address.startsWith('billing@')) || config.mailboxes[0];
+      const pdf = await import('../../lib/pdf');
+      const document = await (kind === 'invoice' ? pdf.buildInvoicePDF : pdf.buildReceiptPDF)(record, client, project, settings);
+      const number = String(record.invoiceNumber || record.receiptNumber || 'Nalaro');
+      const label = kind === 'invoice' ? 'Invoice' : 'Payment receipt';
+      const attachment = await mail.outgoingFile(document.output('blob'), number.replace(/[\\/:*?"<>|]/g, '-') + '.pdf');
+      const draft = await mail.mailboxService.save(mailbox, {
+        to: client?.email ? [client.email] : [], subject: `Nalaro ${label} — ${number}`,
+        text: `Hello ${client?.picName || client?.name || 'there'},\n\nPlease find attached your ${label.toLowerCase()} for ${project?.name || record.projectName || 'your project'}.\n\n${kind === 'invoice' ? 'Payment information is included in the attached invoice.' : 'Thank you for your payment.'}\n\nBest regards,\nNalaro`,
+        attachments: [attachment],
+      });
+      window.location.assign('/admin/email?mailbox=' + encodeURIComponent(mailbox) + '&draft=' + encodeURIComponent(draft.id));
+    } catch (error) { setDownloadError('Draft email belum berhasil dibuat. ' + (error instanceof Error ? error.message : 'Coba lagi.')); }
+    finally { setDownloading(''); }
+  };
+  return { downloading, downloadError, downloadPDF, emailPDF };
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -605,7 +627,7 @@ function Invoices() {
   const [payments, setPayments] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
-  const { downloading, downloadError, downloadPDF } = usePdfDownload();
+  const { downloading, downloadError, downloadPDF, emailPDF } = usePdfDownload();
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
   const [paying, setPaying] = useState<any>(null);
@@ -710,10 +732,10 @@ function Invoices() {
     await load();
   };
 
-  const downloadInvoice = async (invoice: any) => {
+  const downloadInvoice = async (invoice: any, email = false) => {
     const client = clients.find((item) => item.id === invoice.clientId) || invoice.clientSnapshot || { name: invoice.clientName };
     const project = projects.find((item) => item.id === invoice.projectId) || { name: invoice.projectName };
-    await downloadPDF(invoice.id, 'invoice', invoice, client, project, settings);
+    await (email ? emailPDF : downloadPDF)(invoice.id, 'invoice', invoice, client, project, settings);
   };
 
   const deleteInvoice = async (invoice: any) => {
@@ -889,6 +911,7 @@ function Invoices() {
                   <td>
                     <div className="row-actions">
                       <button disabled={!!downloading} onClick={() => downloadInvoice(invoice)}>{downloading === invoice.id ? 'Membuat…' : 'PDF'}</button>
+                      <button disabled={!!downloading} onClick={() => downloadInvoice(invoice, true)}>Email</button>
                       {!['paid', 'cancelled'].includes(String(invoice.status)) && (
                         <button onClick={() => {
                           setPaying(invoice);
@@ -922,7 +945,7 @@ function Receipts() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [deleting, setDeleting] = useState('');
-  const { downloading, downloadError, downloadPDF } = usePdfDownload();
+  const { downloading, downloadError, downloadPDF, emailPDF } = usePdfDownload();
 
   const load = async () => {
     const [receiptRows, clientRows, projectRows, invoiceRows, settingSnap] = await Promise.all([
@@ -941,11 +964,11 @@ function Receipts() {
 
   useEffect(() => { load().catch(console.error); }, []);
 
-  const download = async (receipt: any) => {
+  const download = async (receipt: any, email = false) => {
     const invoice = invoices.find((item) => item.id === receipt.invoiceId);
     const client = clients.find((item) => item.id === receipt.clientId) || receipt.clientSnapshot || invoice?.clientSnapshot || { name: receipt.clientName };
     const project = projects.find((item) => item.id === (receipt.projectId || invoice?.projectId)) || { name: receipt.projectName };
-    await downloadPDF(receipt.id, 'receipt', receipt, client, project, settings);
+    await (email ? emailPDF : downloadPDF)(receipt.id, 'receipt', receipt, client, project, settings);
   };
 
   const remove = async (receipt: any) => {
@@ -977,7 +1000,7 @@ function Receipts() {
                 <td>{receipt.relatedInvoice || '—'}</td>
                 <td>{money(receipt.amount)}</td>
                 <td>{receipt.paymentMethod || '—'}</td>
-                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button><button className="danger-action" disabled={deleting === receipt.id} onClick={() => remove(receipt)}>{deleting === receipt.id ? 'Menghapus…' : 'Hapus'}</button></div></td>
+                <td><div className="row-actions"><button disabled={!!downloading} onClick={() => download(receipt)}>{downloading === receipt.id ? 'Membuat…' : 'PDF'}</button><button disabled={!!downloading} onClick={() => download(receipt, true)}>Email</button><button className="danger-action" disabled={deleting === receipt.id} onClick={() => remove(receipt)}>{deleting === receipt.id ? 'Menghapus…' : 'Hapus'}</button></div></td>
               </tr>
             ))}
           </tbody>
@@ -1157,6 +1180,7 @@ function AdminLayout() {
     ['04', 'Invoices', '/invoices'],
     ['05', 'Receipts', '/receipts'],
     ['06', 'Archive', '/archive'],
+    ['07', 'Email', '/email'],
   ];
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -1191,7 +1215,7 @@ function AdminLayout() {
 
         <div className="sidebar-foot">
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'active settings-link' : 'settings-link'}>
-            <span>07</span><strong>Settings</strong><i>↗</i>
+            <span>08</span><strong>Settings</strong><i>↗</i>
           </NavLink>
           <button onClick={logout}><span>×</span><strong>Keluar</strong></button>
           <a className="order-form-link" href="/form/order" target="_blank" rel="noopener noreferrer">Form order klien ↗</a>
@@ -1207,6 +1231,7 @@ function AdminLayout() {
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/archive" element={<Archive />} />
+          <Route path="/email" element={<React.Suspense fallback={<div className="admin-boot">Memuat Mail Desk…</div>}><Mailbox /></React.Suspense>} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

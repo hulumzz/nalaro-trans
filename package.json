@@ -14,7 +14,10 @@
     "test:pdf": "node tests/pdf.test.mjs",
     "test:orders": "node tests/orders.test.mjs",
     "test:ui": "node tests/ui.test.mjs",
-    "test:rules": "node tests/firestore-service.test.cjs"
+    "test:rules": "node tests/firestore-service.test.cjs",
+    "build:mailbox": "node workers/mailbox/build.mjs",
+    "test:mailbox": "node --test tests/mailbox-worker.test.mjs",
+    "test:mailbox-ui": "node tests/mailbox-ui.test.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
@@ -23,9 +26,11 @@
     "@fontsource-variable/martian-mono": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.3.5",
+    "dompurify": "^3.4.16",
     "firebase": "^10.14.0",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
+    "postal-mime": "^4.0.4",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -37,6 +42,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.28.2",
     "jsqr": "^1.4.0",
     "playwright": "^1.56.1",
     "typescript": "^7.0.2",

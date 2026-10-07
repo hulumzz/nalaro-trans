@@ -76,3 +76,19 @@ Pengujian batch dan submit browser terhadap emulator tersedia melalui `npm run t
 ## CRUD data
 
 Menu **Clients** dan **Projects** menyediakan View, Edit, dan Delete. Penghapusan client/project diblokir bila masih memiliki relasi penting. Invoice dapat dihapus beserta payment/receipt/public registry terkait, sedangkan menghapus receipt tidak menghapus payment sehingga receipt dapat diterbitkan kembali.
+
+## Mail Desk — email custom Nalaro
+
+Menu **Email** membuka `/admin/email` dengan login admin yang sama. Mendukung Inbox, Starred, Sent, Drafts, Trash, balasan, beberapa alamat mailbox, lampiran, dan HTML reader terisolasi. Email masuk melalui Cloudflare Email Routing Worker, tersimpan di R2 privat; pengiriman melalui Resend. Gmail tidak diperlukan dalam alur mailbox.
+
+Tombol **Email** pada invoice/receipt membuat draft beserta PDF untuk diperiksa sebelum dikirim. Halaman menampilkan kondisi belum terhubung selama layanan belum dikonfigurasi.
+
+Script **siap ditempel ke dashboard Cloudflare**: [`workers/mailbox/dashboard-worker.js`](workers/mailbox/dashboard-worker.js). Binding R2: `MAIL_BUCKET`. API key Resend hanya di secret Worker `RESEND_API_KEY`. Frontend memakai `PUBLIC_MAILBOX_API_URL` berisi origin Worker, lalu perlu rebuild Pages. Konfigurasi Worker dan DNS belum dideploy otomatis.
+
+Panduan lengkap dashboard, daftar variables, DNS, pengujian, dan batas implementasi: [`docs/custom-mailbox.md`](docs/custom-mailbox.md).
+
+```sh
+npm run build:mailbox
+npm run test:mailbox
+npm run test:mailbox-ui
+```
