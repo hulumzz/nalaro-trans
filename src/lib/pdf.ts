@@ -1,19 +1,34 @@
 import { jsPDF } from 'jspdf';
-// Use the package's ESM entry: the 3.x CommonJS default becomes an object in production.
-import autoTable, { type UserOptions } from 'jspdf-autotable/es';
 import QRCode from 'qrcode';
 import { documentPaymentInformation } from './payment';
 import { verificationUrl } from './verification';
 
-const INK: [number, number, number] = [32, 33, 30];
-const MUTED: [number, number, number] = [112, 114, 106];
-const LINE: [number, number, number] = [220, 220, 214];
-const PAPER: [number, number, number] = [242, 242, 239];
+const INK: [number, number, number] = [28, 29, 27];
+const MUTED: [number, number, number] = [117, 118, 114];
+const LINE: [number, number, number] = [221, 221, 216];
+const PAPER: [number, number, number] = [244, 244, 241];
 const FLARE: [number, number, number] = [255, 91, 46];
-const LEFT = 14, RIGHT = 196, WIDTH = 182, TOP = 40, BOTTOM = 276;
-const money = (value: unknown = 0) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0);
-const text = (value: unknown) => String(value ?? '').trim() || '—';
+const WHITE: [number, number, number] = [255, 255, 255];
+const LEFT = 16;
+const RIGHT = 194;
+const WIDTH = RIGHT - LEFT;
+const PUBLIC_SITE = 'https://www.nalaro.one';
+
+const money = (value: unknown = 0) => new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  maximumFractionDigits: 0,
+}).format(Number(value) || 0);
+
+const text = (value: unknown) => String(value ?? '').trim();
 const safeFileName = (value: string) => value.replace(/[\\/:*?"<>|\x00-\x1F]/g, '-');
+
+function dateText(value: unknown) {
+  if (!value) return '—';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
 
 async function imageFromUrl(url: string): Promise<string> {
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -27,240 +42,449 @@ async function imageFromUrl(url: string): Promise<string> {
   });
 }
 
-/** Keep a four-module quiet zone, high error correction and a small centre mark. */
+async function watermarkFromLogo(logo: string) {
+  if (!logo) return '';
+  try {
+    const image = new Image();
+    image.src = logo;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const context = canvas.getContext('2d');
+    if (!context) return '';
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const r = pixels.data[i];
+      const g = pixels.data[i + 1];
+      const b = pixels.data[i + 2];
+      const a = pixels.data[i + 3];
+      const light = (r + g + b) / 3;
+      if (a > 0 && light > 145) {
+        pixels.data[i] = 115;
+        pixels.data[i + 1] = 115;
+        pixels.data[i + 2] = 111;
+        pixels.data[i + 3] = Math.min(24, Math.max(10, Math.round(a * 0.08)));
+      } else {
+        pixels.data[i + 3] = 0;
+      }
+    }
+    context.putImageData(pixels, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return '';
+  }
+}
+
+/** High error correction + larger Nalaro centre mark while preserving scanability. */
 export async function verificationQr(url: string, logo?: string) {
   const canvas = document.createElement('canvas');
-  await QRCode.toCanvas(canvas, url, { errorCorrectionLevel: 'H', margin: 4, width: 600, color: { dark: '#20211e', light: '#ffffff' } });
+  await QRCode.toCanvas(canvas, url, {
+    errorCorrectionLevel: 'H',
+    margin: 4,
+    width: 384,
+    color: { dark: '#1c1d1b', light: '#ffffff' },
+  });
+
   if (logo) {
     try {
       const image = new Image();
       image.src = logo;
       await image.decode();
-      const context = canvas.getContext('2d')!;
-      const box = canvas.width * 0.16, mark = canvas.width * 0.12;
-      context.fillStyle = '#ffffff';
-      context.fillRect((canvas.width - box) / 2, (canvas.height - box) / 2, box, box);
-      context.fillStyle = '#20211e';
-      context.fillRect((canvas.width - mark) / 2, (canvas.height - mark) / 2, mark, mark);
-      const icon = mark * 0.82;
-      context.drawImage(image, (canvas.width - icon) / 2, (canvas.height - icon) / 2, icon, icon);
-    } catch { /* A plain QR remains usable when the logo is unavailable. */ }
+      const context = canvas.getContext('2d');
+      if (context) {
+        const box = canvas.width * 0.22;
+        const mark = canvas.width * 0.16;
+        const icon = canvas.width * 0.145;
+        context.fillStyle = '#ffffff';
+        context.fillRect((canvas.width - box) / 2, (canvas.height - box) / 2, box, box);
+        context.fillStyle = '#1c1d1b';
+        context.fillRect((canvas.width - mark) / 2, (canvas.height - mark) / 2, mark, mark);
+        context.drawImage(image, (canvas.width - icon) / 2, (canvas.height - icon) / 2, icon, icon);
+      }
+    } catch {
+      // Plain QR remains valid if the logo cannot be decoded.
+    }
   }
   return canvas.toDataURL('image/png');
 }
 
-class DocumentLayout {
-  doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  y = TOP;
-  headers = new Set<number>();
-  constructor(private title: string, private logo: string, private settings: any, private documentNumber: string) {
-    this.doc.setProperties({ title: `${title} ${documentNumber}`, author: settings?.businessName || 'Nalaro' });
-    this.header();
-  }
-  header = () => {
-    const page = this.doc.getCurrentPageInfo().pageNumber;
-    if (this.headers.has(page)) return;
-    this.headers.add(page);
-    const doc = this.doc;
-    doc.setFillColor(...PAPER);
-    doc.rect(0, 0, 210, 32, 'F');
-    if (this.logo) {
-      doc.setFillColor(...INK); doc.roundedRect(LEFT, 7, 16, 16, 2, 2, 'F');
-      doc.addImage(this.logo, 'PNG', LEFT + 1.5, 8.5, 13, 13);
-    }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...INK);
-    doc.text('NALARO', this.logo ? 34 : LEFT, 17);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...MUTED);
-    doc.text('PROJECT DESK / DIGITAL DOCUMENT', this.logo ? 34 : LEFT, 23);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.setTextColor(...FLARE);
-    doc.text(this.title, RIGHT, 19, { align: 'right' });
-  };
-  ensure(height: number) {
-    if (this.y + height > BOTTOM) { this.doc.addPage(); this.header(); this.y = TOP; }
-  }
-  table(options: UserOptions) {
-    this.ensure(15);
-    autoTable(this.doc, {
-      startY: this.y,
-      theme: 'plain',
-      margin: { top: TOP, bottom: 24, left: LEFT, right: LEFT },
-      styles: { font: 'helvetica', fontSize: 9, textColor: INK, overflow: 'linebreak', cellPadding: { top: 2, right: 3, bottom: 2, left: 0 }, lineColor: LINE },
-      headStyles: { fontSize: 7, fontStyle: 'normal', textColor: MUTED, fillColor: [255, 255, 255], cellPadding: { top: 1, right: 3, bottom: 1, left: 0 } },
-      rowPageBreak: 'avoid',
-      ...options,
-      willDrawPage: () => this.header(),
-    });
-    this.y = (this.doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
-  }
-  fields(fields: [string, unknown][], widths?: number[]) {
-    this.table({
-      head: [fields.map(([label]) => label.toUpperCase())],
-      body: [fields.map(([, value]) => text(value))],
-      bodyStyles: { fontStyle: 'bold' },
-      columnStyles: widths ? Object.fromEntries(widths.map((width, index) => [index, { cellWidth: width }])) : {},
-    });
-  }
-  paragraph(content: unknown, size = 8, color = MUTED) {
-    this.doc.setFont('helvetica', 'normal'); this.doc.setFontSize(size);
-    const lines: string[] = this.doc.splitTextToSize(text(content), WIDTH);
-    const height = size * 0.3528 * 1.45;
-    for (const line of lines) {
-      this.ensure(height + 2);
-      // ensure() may draw a page header, so restore the paragraph style each time.
-      this.doc.setFont('helvetica', 'normal'); this.doc.setFontSize(size); this.doc.setTextColor(...color);
-      this.doc.text(line, LEFT, this.y + height);
-      this.y += height;
-    }
-    this.y += 3;
-  }
-  rule() {
-    this.ensure(8); this.doc.setDrawColor(...LINE); this.doc.line(LEFT, this.y, RIGHT, this.y); this.y += 4;
-  }
-  payment(document: any) {
-    const payment = documentPaymentInformation(document, this.settings);
-    // Cash has no bank, wallet or QRIS payment information.
-    if (payment.kind === 'cash') return;
-    this.rule();
-    this.fields([['Informasi pembayaran', payment.method]]);
-    this.paragraph((payment.lines || []).join('\n'), 9, INK);
-    if (payment.qrisImage) {
-      try {
-        const properties = this.doc.getImageProperties(payment.qrisImage);
-        const scale = Math.min(50 / properties.width, 60 / properties.height);
-        const width = properties.width * scale, height = properties.height * scale;
-        const reserved = Math.max(height, 54);
-        this.ensure(reserved + 12);
-        const placement = { page: this.doc.getCurrentPageInfo().pageNumber, y: this.y };
-        this.doc.addImage(payment.qrisImage, properties.fileType, LEFT, this.y, width, height);
-        this.y += reserved + 3;
-        this.paragraph('QRIS PEMBAYARAN • Masukkan nominal sesuai tagihan.', 7);
-        return placement;
-      } catch { throw new Error('Gambar QRIS tidak valid. Unggah ulang PNG/JPG di Pengaturan.'); }
-    }
-  }
-  async verification(token: unknown, paired?: { page: number; y: number }) {
-    const url = verificationUrl(token, this.settings);
-    if (!url) {
-      this.paragraph('Dokumen belum memiliki token verifikasi.');
-      return;
-    }
-    const qr = await verificationQr(url, this.logo);
-    if (paired) {
-      const lastPage = this.doc.getCurrentPageInfo().pageNumber;
-      this.doc.setPage(paired.page);
-      const x = 111, y = paired.y;
-      this.doc.setFont('helvetica', 'bold'); this.doc.setFontSize(8); this.doc.setTextColor(...INK);
-      this.doc.text('VERIFIKASI DOKUMEN', x, y + 5);
-      this.doc.addImage(qr, 'PNG', x, y + 10, 34, 34);
-      this.doc.link(x, y + 10, 34, 34, { url });
-      this.doc.setFont('helvetica', 'normal'); this.doc.setFontSize(7); this.doc.setTextColor(...MUTED);
-      this.doc.text(this.doc.splitTextToSize('Scan untuk memeriksa dokumen di registry Nalaro.', 46), 150, y + 18);
-      const hostLines = this.doc.splitTextToSize(new URL(url).host, 85);
-      this.doc.text(hostLines, x, y + 51);
-      this.doc.link(x, y + 47, 85, Math.max(5, hostLines.length * 3), { url });
-      this.doc.setPage(lastPage);
-      return;
-    }
-    this.ensure(49);
-    this.rule();
-    const y = this.y;
-    this.doc.addImage(qr, 'PNG', LEFT, y, 36, 36);
-    this.doc.setFont('helvetica', 'bold'); this.doc.setFontSize(9); this.doc.setTextColor(...INK);
-    this.doc.text('VERIFIKASI DOKUMEN', 57, y + 8);
-    this.doc.setFont('helvetica', 'normal'); this.doc.setFontSize(8); this.doc.setTextColor(...MUTED);
-    this.doc.text(this.doc.splitTextToSize('Scan QR untuk memeriksa dokumen ini pada registry publik Nalaro.', 135), 57, y + 15);
-    const host = new URL(url).host;
-    this.doc.setTextColor(...INK); this.doc.setFontSize(7);
-    const hostLines = this.doc.splitTextToSize(host, 135);
-    this.doc.text(hostLines, 57, y + 27);
-    this.doc.link(57, y + 23, 135, Math.max(6, hostLines.length * 3), { url });
-    this.doc.link(LEFT, y, 36, 36, { url });
-    this.y = y + Math.max(40, 27 + hostLines.length * 3);
-  }
-  finish() {
-    const count = this.doc.getNumberOfPages();
-    for (let page = 1; page <= count; page++) {
-      this.doc.setPage(page); this.header();
-      this.doc.setDrawColor(...LINE); this.doc.line(LEFT, 282, RIGHT, 282);
-      this.doc.setFont('helvetica', 'normal'); this.doc.setFontSize(7); this.doc.setTextColor(...MUTED);
-      this.doc.text('ISSUED DIGITALLY BY NALARO', LEFT, 288);
-      this.doc.text(`${page} / ${count}`, RIGHT, 288, { align: 'right' });
-    }
-    return this.doc;
-  }
+type Assets = { logo: string; watermark: string };
+
+function createDoc(title: string, number: string) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+    putOnlyUsedFonts: true,
+    precision: 2,
+  });
+  doc.setProperties({ title: title + ' ' + number, author: 'Nalaro', creator: 'NalaroTrans' });
+  return doc;
 }
 
-async function createLayout(title: string, settings: any, number: string) {
+function setText(doc: jsPDF, size: number, style: 'normal' | 'bold' = 'normal', color: [number, number, number] = INK) {
+  doc.setFont('helvetica', style);
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+}
+
+function line(doc: jsPDF, y: number) {
+  doc.setDrawColor(...LINE);
+  doc.setLineWidth(0.25);
+  doc.line(LEFT, y, RIGHT, y);
+}
+
+function fitLines(doc: jsPDF, value: unknown, width: number, maxLines = 4, startSize = 9.4, minSize = 7.2) {
+  const raw = text(value) || '—';
+  let size = startSize;
+  let lines = doc.splitTextToSize(raw, width) as string[];
+  while (lines.length > maxLines && size > minSize) {
+    size -= 0.4;
+    doc.setFontSize(size);
+    lines = doc.splitTextToSize(raw, width) as string[];
+  }
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    const last = String(lines[maxLines - 1] || '').replace(/[. ]+$/, '');
+    lines[maxLines - 1] = last + '…';
+  }
+  return { lines, size, height: Math.max(1, lines.length) * 4.1 };
+}
+
+function drawLabel(doc: jsPDF, label: string, x: number, y: number, align: 'left' | 'right' = 'left') {
+  setText(doc, 6.8, 'normal', MUTED);
+  doc.text(label.toUpperCase(), x, y, { align });
+}
+
+function drawValue(doc: jsPDF, value: unknown, x: number, y: number, width: number, options: { bold?: boolean; maxLines?: number; size?: number; color?: [number, number, number] } = {}) {
+  setText(doc, options.size || 9.4, options.bold === false ? 'normal' : 'bold', options.color || INK);
+  const fitted = fitLines(doc, value, width, options.maxLines || 4, options.size || 9.4);
+  setText(doc, fitted.size, options.bold === false ? 'normal' : 'bold', options.color || INK);
+  doc.text(fitted.lines, x, y);
+  return fitted.height;
+}
+
+function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string) {
+  doc.setFillColor(...PAPER);
+  doc.rect(0, 0, 210, 39, 'F');
+  doc.setFillColor(...FLARE);
+  doc.rect(0, 38.4, 210, 0.8, 'F');
+
+  doc.setFillColor(...INK);
+  doc.roundedRect(16, 10.5, 18, 18, 3.2, 3.2, 'F');
+  if (assets.logo) {
+    try { doc.addImage(assets.logo, 'PNG', 18.4, 12.9, 13.2, 13.2, 'brand-logo', 'FAST'); } catch { /* wordmark stays visible */ }
+  }
+
+  setText(doc, 19.5, 'bold', INK);
+  doc.text('NALARO', 39, 20.2);
+  setText(doc, 6.8, 'normal', MUTED);
+  doc.text(PUBLIC_SITE, 39, 26.1);
+
+  setText(doc, 20, 'bold', FLARE);
+  doc.text(title, RIGHT, 19.2, { align: 'right' });
+
+  const pill = String(status || '').toUpperCase();
+  const pillWidth = Math.max(18, doc.getTextWidth(pill) + 9);
+  doc.setFillColor(...INK);
+  doc.roundedRect(RIGHT - pillWidth, 22.6, pillWidth, 7.3, 3.2, 3.2, 'F');
+  setText(doc, 6.3, 'bold', WHITE);
+  doc.text(pill, RIGHT - pillWidth / 2, 27.5, { align: 'center' });
+}
+
+function drawWatermark(doc: jsPDF, assets: Assets, y = 118) {
+  if (!assets.watermark) return;
+  try { doc.addImage(assets.watermark, 'PNG', 67, y, 76, 76, 'brand-watermark', 'FAST'); } catch { /* decorative only */ }
+}
+
+function drawFooter(doc: jsPDF, message: string) {
+  line(doc, 277);
+  setText(doc, 6.8, 'normal', MUTED);
+  doc.text('Nalaro', LEFT, 285);
+  doc.text(message, 105, 285, { align: 'center' });
+  doc.text(PUBLIC_SITE, RIGHT, 285, { align: 'right' });
+  doc.link(RIGHT - 39, 281.5, 39, 5.5, { url: PUBLIC_SITE });
+}
+
+function drawMeta(doc: jsPDF, fields: Array<{ label: string; value: unknown; x: number; width: number; align?: 'left' | 'right' }>) {
+  for (const field of fields) {
+    drawLabel(doc, field.label, field.x, 58.4, field.align || 'left');
+    setText(doc, 9.5, 'bold', INK);
+    doc.text(text(field.value) || '—', field.x, 65.1, { align: field.align || 'left', maxWidth: field.width });
+  }
+  line(doc, 74);
+}
+
+function paymentRows(payment: any) {
+  const rows: Array<[string, string]> = [];
+  const lines = (payment.lines || []).map((value: unknown) => String(value));
+  if (payment.kind === 'bank') {
+    if (lines[0]) rows.push(['Bank', lines[0]]);
+    const account = lines.find((item: string) => item.toLowerCase().startsWith('no. rekening:'));
+    const holder = lines.find((item: string) => item.toLowerCase().startsWith('a.n.'));
+    if (account) rows.push(['Account no.', account.split(':').slice(1).join(':').trim()]);
+    if (holder) rows.push(['Account name', holder.replace(/^a\.n\.\s*/i, '')]);
+  } else if (payment.kind === 'wallet') {
+    if (lines[0]) rows.push(['E-wallet', lines[0]]);
+    const number = lines.find((item: string) => item.toLowerCase().startsWith('nomor:'));
+    const holder = lines.find((item: string) => item.toLowerCase().startsWith('a.n.'));
+    if (number) rows.push(['Number', number.split(':').slice(1).join(':').trim()]);
+    if (holder) rows.push(['Account name', holder.replace(/^a\.n\.\s*/i, '')]);
+  } else if (payment.kind === 'other') {
+    rows.push(['Information', lines.join(' ') || '—']);
+  } else if (payment.kind === 'qris') {
+    if (lines[0]) rows.push(['Merchant', lines[0]]);
+  }
+  return rows;
+}
+
+function drawPaymentDetails(doc: jsPDF, documentData: any, settings: any, y: number) {
+  const payment = documentPaymentInformation(documentData, settings || {});
+  drawLabel(doc, 'Payment details', LEFT, y);
+  setText(doc, 9.4, 'bold', INK);
+  doc.text(payment.method || documentData.paymentMethod || '—', LEFT, y + 7);
+
+  if (payment.kind === 'cash') return y + 18;
+
+  if (payment.kind === 'qris' && payment.qrisImage) {
+    try {
+      const info = doc.getImageProperties(payment.qrisImage);
+      const size = 33;
+      doc.addImage(payment.qrisImage, info.fileType, LEFT, y + 11, size, size, 'payment-qris', 'FAST');
+      const rows = paymentRows(payment);
+      let rowY = y + 16;
+      for (const [label, value] of rows) {
+        drawLabel(doc, label, 54, rowY);
+        drawValue(doc, value, 79, rowY, 61, { size: 8.2, maxLines: 2 });
+        rowY += 8;
+      }
+      return y + 49;
+    } catch {
+      throw new Error('Gambar QRIS tidak valid. Unggah ulang PNG/JPG di Pengaturan.');
+    }
+  }
+
+  let rowY = y + 16;
+  for (const [label, value] of paymentRows(payment)) {
+    drawLabel(doc, label, LEFT, rowY);
+    drawValue(doc, value, 46, rowY, 82, { size: 8.4, maxLines: 2 });
+    rowY += 8;
+  }
+  return Math.max(y + 25, rowY);
+}
+
+async function drawVerification(doc: jsPDF, token: unknown, settings: any, assets: Assets, y: number) {
+  const url = verificationUrl(token, settings || {});
+  drawLabel(doc, 'Verify document', RIGHT, y, 'right');
+  if (!url) {
+    setText(doc, 7.2, 'normal', MUTED);
+    doc.text('Verification unavailable', RIGHT, y + 10, { align: 'right' });
+    return;
+  }
+  const qr = await verificationQr(url, assets.logo);
+  const size = 31.5;
+  const x = RIGHT - size;
+  doc.addImage(qr, 'PNG', x, y + 7, size, size, 'verification-qr', 'FAST');
+  doc.link(x, y + 7, size, size, { url });
+}
+
+async function createAssets() {
   let logo = '';
-  try { logo = await imageFromUrl('/android-chrome-192x192.png'); } catch { /* Wordmark and plain verification QR are still available. */ }
-  return new DocumentLayout(title, logo, settings || {}, number);
+  try { logo = await imageFromUrl('/android-chrome-192x192.png'); } catch { /* text-only fallback */ }
+  return { logo, watermark: await watermarkFromLogo(logo) };
 }
 
-export async function buildInvoicePDF(invoice: any, client: any, project: any, settings: any = {}) {
-  const layout = await createLayout('INVOICE', settings, invoice.invoiceNumber);
-  layout.fields([['Nomor invoice', invoice.invoiceNumber], ['Tanggal terbit', invoice.issueDate], ['Jatuh tempo', invoice.dueDate]], [90, 46, 46]);
-  layout.rule();
-  layout.fields([
-    ['Diterbitkan oleh', [settings?.businessName || 'Nalaro', settings?.ownerName || 'Muhamad Khoirul Ulum', settings?.website || 'nalaro.web.id', settings?.address, settings?.email].filter(Boolean).join('\n')],
-    ['Ditagihkan kepada', [client?.name || invoice.clientName, client?.picName, client?.address, client?.email].filter(Boolean).join('\n')],
-  ], [91, 91]);
-  layout.fields([['Proyek', project?.name || invoice.projectName], ['ID proyek', project?.projectNumber]], [132, 50]);
-  layout.table({
-    head: [['ITEM / DESKRIPSI', 'QTY', 'HARGA', 'TOTAL']],
-    body: (invoice.items || []).map((item: any) => [
-      [item.description || 'Service', item.details].filter(Boolean).join('\n'),
-      String(item.quantity ?? 1), money(item.unitPrice), money(item.total ?? Number(item.quantity ?? 1) * Number(item.unitPrice || 0)),
-    ]),
-    styles: { font: 'helvetica', fontSize: 8.5, textColor: INK, overflow: 'linebreak', cellPadding: 4, lineColor: LINE, lineWidth: 0.1 },
-    headStyles: { fillColor: PAPER, textColor: MUTED, fontStyle: 'bold', fontSize: 7 },
-    columnStyles: { 0: { cellWidth: 86 }, 1: { cellWidth: 16, halign: 'center' }, 2: { cellWidth: 40, halign: 'right' }, 3: { cellWidth: 40, halign: 'right' } },
-  });
-  layout.ensure(33);
-  layout.table({
-    styles: { font: 'helvetica', fontSize: 8, textColor: INK, overflow: 'linebreak', cellPadding: { top: 1.5, bottom: 1.5, left: 3, right: 3 } },
-    tableWidth: 91, margin: { top: TOP, bottom: 24, left: 105, right: LEFT },
-    body: [
-      ['Subtotal', money(invoice.subtotal)], ['Diskon', money(invoice.discount)], ['PPN', 'Tidak dipungut'],
-      ['TOTAL', money(invoice.grandTotal)],
-      ...(Number(invoice.paidAmount) > 0 ? [['Sudah dibayar', money(invoice.paidAmount)], ['Sisa tagihan', money(invoice.outstandingAmount ?? Number(invoice.grandTotal) - Number(invoice.paidAmount))]] : []),
-    ],
-    columnStyles: { 0: { cellWidth: 39 }, 1: { cellWidth: 52, halign: 'right' } },
-    didParseCell: (data) => { if (data.row.index === 3) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 11; data.cell.styles.fillColor = PAPER; data.cell.styles.textColor = FLARE; } },
-  });
-  const paymentQr = layout.payment(invoice);
-  layout.rule();
-  if (invoice.notes) { layout.fields([['Catatan', invoice.notes]]); }
-  layout.paragraph('PPN tidak dipungut. Dokumen ini merupakan invoice/tagihan komersial dan bukan Faktur Pajak.');
-  layout.paragraph('Scope pekerjaan mengikuti proposal atau kesepakatan proyek yang telah disetujui.');
-  await layout.verification(invoice.publicToken, paymentQr);
-  return layout.finish();
+function partyBlock(doc: jsPDF, leftLabel: string, leftLines: unknown[], rightLabel: string, rightLines: unknown[], y = 88) {
+  drawLabel(doc, leftLabel, LEFT, y);
+  drawLabel(doc, rightLabel, 108, y);
+
+  const leftPrimary = leftLines.filter(Boolean);
+  const rightPrimary = rightLines.filter(Boolean);
+  let leftY = y + 7;
+  let rightY = y + 7;
+
+  if (leftPrimary[0]) leftY += drawValue(doc, leftPrimary[0], LEFT, leftY, 82, { size: 9.2, maxLines: 3 }) + 1;
+  for (const value of leftPrimary.slice(1)) {
+    leftY += drawValue(doc, value, LEFT, leftY, 82, { bold: false, size: 8.7, maxLines: 2 }) + 1;
+  }
+
+  if (rightPrimary[0]) rightY += drawValue(doc, rightPrimary[0], 108, rightY, 86, { size: 9.2, maxLines: 3 }) + 1;
+  for (const value of rightPrimary.slice(1)) {
+    rightY += drawValue(doc, value, 108, rightY, 86, { bold: false, size: 8.7, maxLines: 2 }) + 1;
+  }
+
+  const bottom = Math.max(111, leftY + 5, rightY + 5);
+  line(doc, bottom);
+  return bottom;
 }
 
 export async function buildReceiptPDF(receipt: any, client: any, project: any, settings: any = {}) {
-  const layout = await createLayout('RECEIPT', settings, receipt.receiptNumber);
-  layout.fields([['Nomor receipt', receipt.receiptNumber], ['Tanggal pembayaran', receipt.paymentDate]], [120, 62]);
-  layout.rule();
-  layout.fields([['Diterima dari', [client?.name || receipt.clientName, client?.picName, client?.address].filter(Boolean).join('\n')], ['Invoice terkait', receipt.relatedInvoice]], [110, 72]);
-  layout.fields([['Proyek', project?.name || receipt.projectName]]);
-  layout.fields([['Metode pembayaran', receipt.paymentMethod], ['Referensi', receipt.paymentReference]], [91, 91]);
-  layout.table({
-    head: [['JUMLAH DITERIMA']], body: [[money(receipt.amount)]],
-    headStyles: { fillColor: PAPER, textColor: MUTED, fontSize: 7, cellPadding: 5 },
-    bodyStyles: { fillColor: PAPER, textColor: FLARE, fontSize: 23, fontStyle: 'bold', cellPadding: 5 },
-  });
-  const paymentQr = layout.payment(receipt);
-  if (receipt.notes) layout.fields([['Catatan', receipt.notes]]);
-  layout.rule();
-  layout.paragraph('Receipt ini merupakan bukti pembayaran yang telah dicatat oleh Nalaro.');
-  layout.fields([['Diterbitkan oleh', (settings?.businessName || 'Nalaro') + ' • ' + (settings?.ownerName || 'Muhamad Khoirul Ulum')]]);
-  await layout.verification(receipt.publicToken, paymentQr);
-  return layout.finish();
+  const assets = await createAssets();
+  const doc = createDoc('Payment Receipt', receipt.receiptNumber || '');
+  drawHeader(doc, assets, 'PAYMENT RECEIPT', 'PAID');
+  drawWatermark(doc, assets, 116);
+
+  drawMeta(doc, [
+    { label: 'Receipt no.', value: receipt.receiptNumber, x: LEFT, width: 58 },
+    { label: 'Invoice no.', value: receipt.relatedInvoice, x: 84, width: 62 },
+    { label: 'Payment date', value: dateText(receipt.paymentDate), x: RIGHT, width: 42, align: 'right' },
+  ]);
+
+  const partyBottom = partyBlock(
+    doc,
+    'Received from',
+    [client?.name || receipt.clientName, client?.picName, client?.address],
+    'Received by',
+    [settings?.businessName || 'Nalaro', settings?.ownerName || 'Muhamad Khoirul Ulum'],
+  );
+
+  let y = partyBottom + 12;
+  drawLabel(doc, 'Payment summary', LEFT, y);
+  y += 5;
+
+  doc.setFillColor(...INK);
+  doc.rect(LEFT, y, WIDTH, 8.8, 'F');
+  setText(doc, 6.7, 'bold', WHITE);
+  doc.text('DESCRIPTION', LEFT + 5, y + 5.7);
+  doc.text('INVOICE REF.', 121, y + 5.7);
+  doc.text('AMOUNT', RIGHT - 4, y + 5.7, { align: 'right' });
+
+  const rowTop = y + 8.8;
+  const description = project?.name || receipt.projectName || 'Payment';
+  const subDescription = client?.name || receipt.clientName || project?.serviceType || '';
+  const desc = fitLines(doc, description, 91, 2, 9.5);
+  const sub = subDescription ? fitLines(doc, subDescription, 91, 2, 8.2) : { lines: [], size: 8.2, height: 0 };
+  const rowHeight = Math.max(21, desc.height + sub.height + 8);
+
+  drawValue(doc, description, LEFT + 5, rowTop + 8, 91, { size: 9.5, maxLines: 2 });
+  if (subDescription) drawValue(doc, subDescription, LEFT + 5, rowTop + 8 + desc.height, 91, { bold: false, size: 8.2, color: MUTED, maxLines: 2 });
+  drawValue(doc, receipt.relatedInvoice, 121, rowTop + 8, 42, { bold: false, size: 8.4, maxLines: 2 });
+  setText(doc, 9.4, 'bold', INK);
+  doc.text(money(receipt.amount), RIGHT - 4, rowTop + 8, { align: 'right' });
+  line(doc, rowTop + rowHeight);
+
+  const amountY = rowTop + rowHeight + 13;
+  doc.setFillColor(...PAPER);
+  doc.rect(LEFT, amountY, WIDTH, 31.5, 'F');
+  doc.setFillColor(...FLARE);
+  doc.rect(LEFT, amountY, 1.4, 31.5, 'F');
+  drawLabel(doc, 'Amount received', LEFT + 8, amountY + 10);
+  setText(doc, 24, 'bold', FLARE);
+  doc.text(money(receipt.amount), LEFT + 8, amountY + 23);
+  setText(doc, 7.6, 'normal', MUTED);
+  const paidVia = 'Received in full via ' + String(receipt.paymentMethod || 'payment').toLowerCase();
+  doc.text(paidVia, RIGHT - 5, amountY + 22, { align: 'right', maxWidth: 72 });
+
+  const detailsY = amountY + 49;
+  line(doc, detailsY - 10);
+  drawPaymentDetails(doc, receipt, settings, detailsY);
+  await drawVerification(doc, receipt.publicToken, settings, assets, detailsY);
+
+  drawFooter(doc, 'Thank you for your payment.');
+  return doc;
+}
+
+export async function buildInvoicePDF(invoice: any, client: any, project: any, settings: any = {}) {
+  const assets = await createAssets();
+  const doc = createDoc('Invoice', invoice.invoiceNumber || '');
+  const status = String(invoice.status || 'unpaid').replaceAll('_', ' ').toUpperCase();
+  drawHeader(doc, assets, 'INVOICE', status);
+  drawWatermark(doc, assets, 118);
+
+  drawMeta(doc, [
+    { label: 'Invoice no.', value: invoice.invoiceNumber, x: LEFT, width: 58 },
+    { label: 'Issue date', value: dateText(invoice.issueDate), x: 91, width: 44 },
+    { label: 'Due date', value: dateText(invoice.dueDate), x: RIGHT, width: 42, align: 'right' },
+  ]);
+
+  const partyBottom = partyBlock(
+    doc,
+    'Billed to',
+    [client?.name || invoice.clientName, client?.picName, client?.address, client?.email],
+    'Issued by',
+    [settings?.businessName || 'Nalaro', settings?.ownerName || 'Muhamad Khoirul Ulum'],
+  );
+
+  let y = partyBottom + 12;
+  drawLabel(doc, 'Invoice summary', LEFT, y);
+  y += 5;
+
+  doc.setFillColor(...INK);
+  doc.rect(LEFT, y, WIDTH, 8.8, 'F');
+  setText(doc, 6.5, 'bold', WHITE);
+  doc.text('DESCRIPTION', LEFT + 5, y + 5.7);
+  doc.text('QTY', 126, y + 5.7, { align: 'center' });
+  doc.text('UNIT PRICE', 158, y + 5.7, { align: 'right' });
+  doc.text('AMOUNT', RIGHT - 4, y + 5.7, { align: 'right' });
+
+  const items = Array.isArray(invoice.items) && invoice.items.length ? invoice.items : [{
+    description: project?.name || invoice.projectName || 'Service',
+    details: project?.description || '',
+    quantity: 1,
+    unitPrice: invoice.subtotal || invoice.grandTotal || 0,
+    total: invoice.subtotal || invoice.grandTotal || 0,
+  }];
+
+  let rowY = y + 8.8;
+  const visibleItems = items.slice(0, 3);
+  for (const item of visibleItems) {
+    const titleFit = fitLines(doc, item.description || 'Service', 94, 2, 9.1);
+    const detailFit = item.details ? fitLines(doc, item.details, 94, 2, 7.8) : { lines: [], size: 7.8, height: 0 };
+    const rowHeight = Math.max(18, titleFit.height + detailFit.height + 6);
+    drawValue(doc, item.description || 'Service', LEFT + 5, rowY + 7, 94, { size: 9.1, maxLines: 2 });
+    if (item.details) drawValue(doc, item.details, LEFT + 5, rowY + 7 + titleFit.height, 94, { bold: false, size: 7.8, color: MUTED, maxLines: 2 });
+    setText(doc, 8.5, 'normal', INK);
+    doc.text(String(item.quantity ?? 1), 126, rowY + 7, { align: 'center' });
+    doc.text(money(item.unitPrice), 158, rowY + 7, { align: 'right' });
+    setText(doc, 8.8, 'bold', INK);
+    doc.text(money(item.total ?? Number(item.quantity ?? 1) * Number(item.unitPrice || 0)), RIGHT - 4, rowY + 7, { align: 'right' });
+    rowY += rowHeight;
+    line(doc, rowY);
+  }
+
+  if (items.length > visibleItems.length) {
+    setText(doc, 7.1, 'normal', MUTED);
+    doc.text('+ ' + (items.length - visibleItems.length) + ' additional item(s) retained in the transaction record', LEFT + 5, rowY + 6);
+    rowY += 10;
+  }
+
+  const totalY = rowY + 12;
+  doc.setFillColor(...PAPER);
+  doc.rect(LEFT, totalY, WIDTH, 31.5, 'F');
+  doc.setFillColor(...FLARE);
+  doc.rect(LEFT, totalY, 1.4, 31.5, 'F');
+  drawLabel(doc, 'Total due', LEFT + 8, totalY + 10);
+  setText(doc, 24, 'bold', FLARE);
+  doc.text(money(invoice.grandTotal), LEFT + 8, totalY + 23);
+  setText(doc, 7.4, 'normal', MUTED);
+  const paid = Number(invoice.paidAmount || 0);
+  const outstanding = Number(invoice.outstandingAmount ?? Math.max(0, Number(invoice.grandTotal || 0) - paid));
+  doc.text('Paid: ' + money(paid), RIGHT - 5, totalY + 15, { align: 'right' });
+  doc.text('Outstanding: ' + money(outstanding), RIGHT - 5, totalY + 22, { align: 'right' });
+
+  const detailsY = totalY + 49;
+  line(doc, detailsY - 10);
+  drawPaymentDetails(doc, invoice, settings, detailsY);
+  await drawVerification(doc, invoice.publicToken, settings, assets, detailsY);
+
+  if (invoice.notes) {
+    const note = fitLines(doc, invoice.notes, 86, 2, 6.8, 6.2);
+    setText(doc, note.size, 'normal', MUTED);
+    doc.text(note.lines, LEFT, 267);
+  }
+
+  drawFooter(doc, 'Thank you for your business.');
+  return doc;
 }
 
 export async function generateInvoicePDF(invoice: any, client: any, project: any, settings: any) {
   const doc = await buildInvoicePDF(invoice, client, project, settings);
   await doc.save(safeFileName(invoice.invoiceNumber || 'Nalaro-Invoice') + '.pdf', { returnPromise: true });
 }
+
 export async function generateReceiptPDF(receipt: any, client: any, project: any, settings: any) {
   const doc = await buildReceiptPDF(receipt, client, project, settings);
   await doc.save(safeFileName(receipt.receiptNumber || 'Nalaro-Receipt') + '.pdf', { returnPromise: true });
