@@ -1,3 +1,4 @@
-/admin/*  /admin/index.html  200
-/verifi/*  /verifi/index.html  200
-/verif/*  /verifi/index.html  200
+/admin/*  /desk/index.html  200
+/verifi/*  /document/index.html  200
+/verif/*  /document/index.html  200
+/form/*  /order-request/index.html  200

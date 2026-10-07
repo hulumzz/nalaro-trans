@@ -43,14 +43,21 @@ const api = {
     const snapshot = paymentInformation('Bank Transfer', settings);
     if (documentPaymentInformation({ paymentDetails: snapshot }, { bankName: 'CHANGED' }).lines[0] !== 'BANK CONTOH') throw new Error('Issued payment destination changed');
     const logo = await new Promise<string>((resolve) => { const img = new Image(); img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d')!.drawImage(img, 0, 0); resolve(canvas.toDataURL()); }; img.src = '/android-chrome-192x192.png'; });
-    for (const size of [600, 300, 180]) {
+    for (const size of [600, 300, 180, 160]) {
       const image = new Image(); image.src = await verificationQr(expected, logo); await image.decode();
       const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
       const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0, size, size);
       const pixels = context.getImageData(0, 0, size, size);
       if (jsQR(pixels.data, size, size)?.data !== expected) throw new Error('Logo QR cannot be decoded at ' + size + 'px');
     }
-    return { expected, qrSizes: [600, 300, 180] };
+    // Also exercise the production host and longer tokens, not only localhost.
+    for (const url of ['https://order.nalaro.digital/verifi/' + token, 'https://order.nalaro.digital/verifi/' + 'a'.repeat(32)]) {
+      const image = new Image(); image.src = await verificationQr(url, logo); await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 160;
+      const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0, 160, 160);
+      if (jsQR(context.getImageData(0, 0, 160, 160).data, 160, 160)?.data !== url) throw new Error('Production QR cannot be decoded');
+    }
+    return { expected, qrSizes: [600, 300, 180, 160] };
   },
 };
 (window as any).testAPI = api;

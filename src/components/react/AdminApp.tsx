@@ -17,7 +17,7 @@ import { auth, db } from '../../lib/firebase';
 import { PAYMENT_METHODS, paymentInformation } from '../../lib/payment';
 import { verificationBaseUrl } from '../../lib/verification';
 
-const ADMIN_EMAIL = 'admin@nalaro.web.id';
+import { ADMIN_EMAIL } from '../../lib/admin';
 
 function money(value: any = 0) {
   return new Intl.NumberFormat('id-ID', {
@@ -57,7 +57,7 @@ function statusClass(status = '') {
   return 'status-pill status-' + status.toLowerCase().replaceAll(' ', '-').replaceAll('_', '-');
 }
 
-async function readCollection(name: string) {
+async function readCollection(name: string): Promise<any[]> {
   const snap = await getDocs(collection(db, name));
   return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
@@ -1194,7 +1194,8 @@ function AdminLayout() {
             <span>07</span><strong>Settings</strong><i>↗</i>
           </NavLink>
           <button onClick={logout}><span>×</span><strong>Keluar</strong></button>
-          <small>e-invoice.nalaro.web.id</small>
+          <a className="order-form-link" href="/form/order" target="_blank" rel="noopener noreferrer">Form order klien ↗</a>
+          <small>order.nalaro.digital</small>
         </div>
       </aside>
 

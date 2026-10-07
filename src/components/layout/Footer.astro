@@ -8,9 +8,9 @@ const year = new Date().getFullYear();
     <nav aria-label="Navigasi footer">{nav.map(item => <a href={`https://nalaro.web.id/#${item.id}`}>{item.label}</a>)}<a href="https://nalaro.web.id/#lab">Lab</a><a href="https://nalaro.web.id/#contact">Kontak</a></nav>
     <div class="footer-products">{products.filter(p => !p.isSlot).map((product, i) => <a href={product.url || `/#product-${["skripzy", "class", "enveely"][i]}`} target={product.url ? "_blank" : undefined} rel={product.url ? "noopener noreferrer" : undefined}>{product.name}<span aria-hidden="true">↗</span></a>)}</div>
   </div>
-  <div class="footer-wordmark" aria-hidden="true" style="display: flex; align-items: center; overflow: visible;">
+  <div class="footer-wordmark" aria-hidden="true">
     <div style="display: block; white-space: nowrap;">NALARO<span style="font-size: .25em; -webkit-text-stroke: 0; color: var(--color-flare); vertical-align: top; margin-left: 20px; line-height: 1.7;">✳</span></div>
-    <img src="/brand/nalaro-ghost-mascot.svg" alt="" style="height: 1.2em; width: auto; flex-shrink: 0; margin-left: auto;" />
+    <img src="/brand/nalaro-ghost-mascot.svg" alt="" />
   </div>
   <div class="footer-bottom">
     <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">

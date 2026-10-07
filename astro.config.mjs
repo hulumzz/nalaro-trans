@@ -5,7 +5,7 @@ import react from '@astrojs/react';
 
 export default defineConfig({
   output: 'static',
-  site: 'https://e-invoice.nalaro.web.id',
+  site: 'https://order.nalaro.digital',
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],

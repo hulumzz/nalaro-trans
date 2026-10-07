@@ -61,17 +61,16 @@ async function watermarkFromLogo(logo: string) {
       const b = pixels.data[i + 2];
       const a = pixels.data[i + 3];
       const light = (r + g + b) / 3;
-      if (a > 0 && light > 145) {
-        pixels.data[i] = 115;
-        pixels.data[i + 1] = 115;
-        pixels.data[i + 2] = 111;
-        pixels.data[i + 3] = Math.min(24, Math.max(10, Math.round(a * 0.08)));
-      } else {
-        pixels.data[i + 3] = 0;
-      }
+      // Flatten onto white instead of a very faint alpha mask: PDF viewers
+      // differ in soft-mask rendering. The logo silhouette stays visible.
+      const coverage = a > 0 && light > 145 ? a / 255 : 0;
+      pixels.data[i] = Math.round(255 - 37 * coverage);
+      pixels.data[i + 1] = Math.round(255 - 37 * coverage);
+      pixels.data[i + 2] = Math.round(255 - 40 * coverage);
+      pixels.data[i + 3] = 255;
     }
     context.putImageData(pixels, 0, 0);
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL('image/jpeg', 0.94);
   } catch {
     return '';
   }
@@ -94,9 +93,9 @@ export async function verificationQr(url: string, logo?: string) {
       await image.decode();
       const context = canvas.getContext('2d');
       if (context) {
-        const box = canvas.width * 0.22;
-        const mark = canvas.width * 0.16;
-        const icon = canvas.width * 0.145;
+        const box = canvas.width * 0.16;
+        const mark = canvas.width * 0.13;
+        const icon = canvas.width * 0.12;
         context.fillStyle = '#ffffff';
         context.fillRect((canvas.width - box) / 2, (canvas.height - box) / 2, box, box);
         context.fillStyle = '#1c1d1b';
@@ -140,6 +139,7 @@ function line(doc: jsPDF, y: number) {
 function fitLines(doc: jsPDF, value: unknown, width: number, maxLines = 4, startSize = 9.4, minSize = 7.2) {
   const raw = text(value) || '—';
   let size = startSize;
+  doc.setFontSize(size);
   let lines = doc.splitTextToSize(raw, width) as string[];
   while (lines.length > maxLines && size > minSize) {
     size -= 0.4;
@@ -197,7 +197,7 @@ function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string, s
 
 function drawWatermark(doc: jsPDF, assets: Assets, y = 118) {
   if (!assets.watermark) return;
-  try { doc.addImage(assets.watermark, 'PNG', 67, y, 76, 76, 'brand-watermark', 'FAST'); } catch { /* decorative only */ }
+  try { doc.addImage(assets.watermark, 'JPEG', 67, y, 76, 76, 'brand-watermark', 'FAST'); } catch { /* decorative only */ }
 }
 
 function drawFooter(doc: jsPDF, message: string, settings: any = {}) {
@@ -285,15 +285,17 @@ function drawPaymentDetails(doc: jsPDF, documentData: any, settings: any, y: num
 
 async function drawVerification(doc: jsPDF, token: unknown, settings: any, assets: Assets, y: number) {
   const url = verificationUrl(token, settings || {});
-  drawLabel(doc, 'Verify document', RIGHT, y, 'right');
+  const size = 36;
+  const x = RIGHT - size;
+  setText(doc, 6.1, 'normal', MUTED);
+  const label = doc.splitTextToSize('Scan to verify the transaction', size);
+  doc.text(label, x + size / 2, y, { align: 'center', lineHeightFactor: 1.15 });
   if (!url) {
     setText(doc, 7.2, 'normal', MUTED);
     doc.text('Verification unavailable', RIGHT, y + 10, { align: 'right' });
     return;
   }
   const qr = await verificationQr(url, assets.logo);
-  const size = 31.5;
-  const x = RIGHT - size;
   doc.addImage(qr, 'PNG', x, y + 7, size, size, 'verification-qr', 'FAST');
   doc.link(x, y + 7, size, size, { url });
 }
@@ -313,9 +315,9 @@ function partyBlock(doc: jsPDF, leftLabel: string, leftLines: unknown[], rightLa
   let leftY = y + 7;
   let rightY = y + 7;
 
-  if (leftPrimary[0]) leftY += drawValue(doc, leftPrimary[0], LEFT, leftY, 82, { size: 9.2, maxLines: 3 }) + 1;
+  if (leftPrimary[0]) leftY += drawValue(doc, leftPrimary[0], LEFT, leftY, 82, { size: 9.2, maxLines: 2 }) + 1;
   for (const value of leftPrimary.slice(1)) {
-    leftY += drawValue(doc, value, LEFT, leftY, 82, { bold: false, size: 8.7, maxLines: 2 }) + 1;
+    leftY += drawValue(doc, value, LEFT, leftY, 82, { bold: false, size: 8.7, maxLines: 1 }) + 1;
   }
 
   if (rightPrimary[0]) rightY += drawValue(doc, rightPrimary[0], 108, rightY, 86, { size: 9.2, maxLines: 3 }) + 1;
@@ -436,13 +438,22 @@ export async function buildInvoicePDF(invoice: any, client: any, project: any, s
   }];
 
   let rowY = y + 8.8;
-  const visibleItems = items.slice(0, 3);
-  for (const item of visibleItems) {
-    const titleFit = fitLines(doc, item.description || 'Service', 94, 2, 9.1);
-    const detailFit = item.details ? fitLines(doc, item.details, 94, 2, 7.8) : { lines: [], size: 7.8, height: 0 };
-    const rowHeight = Math.max(18, titleFit.height + detailFit.height + 6);
-    drawValue(doc, item.description || 'Service', LEFT + 5, rowY + 7, 94, { size: 9.1, maxLines: 2 });
-    if (item.details) drawValue(doc, item.details, LEFT + 5, rowY + 7 + titleFit.height, 94, { bold: false, size: 7.8, color: MUTED, maxLines: 2 });
+  let visibleCount = 0;
+  for (const item of items.slice(0, 3)) {
+    let maxLines = 2;
+    let titleFit = fitLines(doc, item.description || 'Service', 94, maxLines, 9.1);
+    let detailFit = item.details ? fitLines(doc, item.details, 94, maxLines, 7.8) : { lines: [], size: 7.8, height: 0 };
+    let rowHeight = Math.max(18, titleFit.height + detailFit.height + 6);
+    // Reserve the complete payment/verification block above the footer.
+    if (rowY + rowHeight > 169) {
+      if (visibleCount) break;
+      maxLines = 1;
+      titleFit = fitLines(doc, item.description || 'Service', 94, maxLines, 9.1);
+      detailFit = item.details ? fitLines(doc, item.details, 94, maxLines, 7.8) : { lines: [], size: 7.8, height: 0 };
+      rowHeight = 18;
+    }
+    drawValue(doc, item.description || 'Service', LEFT + 5, rowY + 7, 94, { size: 9.1, maxLines });
+    if (item.details) drawValue(doc, item.details, LEFT + 5, rowY + 7 + titleFit.height, 94, { bold: false, size: 7.8, color: MUTED, maxLines });
     setText(doc, 8.5, 'normal', INK);
     doc.text(String(item.quantity ?? 1), 126, rowY + 7, { align: 'center' });
     doc.text(money(item.unitPrice), 158, rowY + 7, { align: 'right' });
@@ -450,12 +461,12 @@ export async function buildInvoicePDF(invoice: any, client: any, project: any, s
     doc.text(money(item.total ?? Number(item.quantity ?? 1) * Number(item.unitPrice || 0)), RIGHT - 4, rowY + 7, { align: 'right' });
     rowY += rowHeight;
     line(doc, rowY);
+    visibleCount++;
   }
 
-  if (items.length > visibleItems.length) {
-    setText(doc, 7.1, 'normal', MUTED);
-    doc.text('+ ' + (items.length - visibleItems.length) + ' additional item(s) retained in the transaction record', LEFT + 5, rowY + 6);
-    rowY += 10;
+  if (items.length > visibleCount) {
+    setText(doc, 6.4, 'normal', MUTED);
+    doc.text('+ ' + (items.length - visibleCount) + ' item(s) in the transaction record', RIGHT, y - 5, { align: 'right' });
   }
 
   const totalY = rowY + 12;
@@ -478,9 +489,9 @@ export async function buildInvoicePDF(invoice: any, client: any, project: any, s
   await drawVerification(doc, invoice.publicToken, settings, assets, detailsY);
 
   if (invoice.notes) {
-    const note = fitLines(doc, invoice.notes, 86, 2, 6.8, 6.2);
+    const note = fitLines(doc, invoice.notes, WIDTH, 1, 6.8, 6.2);
     setText(doc, note.size, 'normal', MUTED);
-    doc.text(note.lines, LEFT, 267);
+    doc.text(note.lines, LEFT, totalY + 36);
   }
 
   drawFooter(doc, 'Thank you for your business.', settings);

@@ -27,3 +27,5 @@ pnpm-debug.log*
 
 # Local browser verification output
 artifacts/
+firebase-debug.log
+firestore-debug.log

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 
-const ADMIN_EMAIL = 'admin@nalaro.web.id';
+import { ADMIN_EMAIL } from '../../lib/admin';
 
 export default function Login() {
   const [email, setEmail] = useState(ADMIN_EMAIL);
@@ -53,7 +53,7 @@ export default function Login() {
           {error && <p className="auth-error"><i />{error}</p>}
           <button className="primary-button auth-submit" disabled={loading}>{loading ? 'Memverifikasi…' : 'Masuk ke Project Desk'} <span>↗</span></button>
         </form>
-        <footer><span>e-invoice.nalaro.web.id</span><a href="https://nalaro.web.id">Kembali ke Nalaro ↗</a></footer>
+        <footer><span>order.nalaro.digital</span><a href="https://nalaro.web.id">Kembali ke Nalaro ↗</a></footer>
       </section>
       <aside className="auth-aside" aria-hidden="true"><span>01</span><div><small>NALARO SYSTEM</small><strong>CLIENT<br/>PROJECT<br/><em>INVOICE</em><br/>RECEIPT.</strong></div><p>Useful systems for useful work.</p></aside>
     </main>

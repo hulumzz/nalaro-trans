@@ -13,7 +13,23 @@ npm run check
 npm run build
 ```
 
-Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan `public/_redirects` melayani `/admin/*` dan `/verifi/*` pada aplikasi statis.
+Cloudflare Pages: build command `npm run build`, output directory `dist` (juga ditetapkan pada `wrangler.jsonc`). Aturan `public/_redirects` melayani `/admin/*`, `/verifi/*`, `/verif/*`, dan `/form/*` melalui halaman tujuan yang berbeda dari pola sumber, sehingga rewrite tidak berulang. Halaman root juga mengenali URL publik jika hosting memakai fallback SPA.
+
+## Form order dan akun admin
+
+Bagikan `https://order.nalaro.digital/form/order` kepada klien. Tautan **Form order klien** tersedia di sidebar admin. Form mengikuti tema utama Nalaro dan dapat diisi tanpa login: nama klien/usaha, penanggung jawab, email, WhatsApp, alamat opsional, nama proyek, jenis layanan, dan target selesai opsional. Harga, deskripsi, serta status pekerjaan diatur admin melalui **Clients** dan **Projects** yang tetap menyediakan edit.
+
+Pengiriman membuat satu client dan satu project dalam batch atomik, dengan ID relasi yang sama, sumber `public_order`, status project `planning`, dan nilai awal nol. Rules memvalidasi field, ukuran, hubungan kedua dokumen, dan server timestamp. Publik hanya boleh membuat pasangan baru; membaca/listing, mengedit, menghapus, mengisi harga/deskripsi, dan menulis invoice/payment/receipt tetap dilarang. Honeypot pada form membantu mengurangi bot sederhana, tetapi bukan pembatasan laju di server.
+
+Email admin adalah `admin@nalaro.digital`, digunakan bersama oleh UI login, penjaga halaman admin, dan rules Firestore. Mengubah string di kode saja tidak mengubah akun Firebase Authentication. Saat migrasi akun yang sudah ada, ubah email pada UID admin lama agar password dan identitas akun tetap terjaga. Login ulang setelah perubahan email.
+
+Rules Firestore dirilis terpisah dari Cloudflare Pages:
+
+```sh
+firebase deploy --only firestore:rules --project nalaro
+```
+
+Backup rules aktif sebelum menerapkan perubahan. Deployment Pages melalui push Git tidak otomatis menerapkan `firestore.rules`.
 
 ## Pembayaran dan dokumen PDF
 
@@ -24,7 +40,7 @@ Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan
 
 Informasi pembayaran pada dokumen baru disimpan ketika invoice diterbitkan atau pembayaran dicatat. Receipt memakai informasi pembayaran yang tercatat pada pembayaran tersebut. Perubahan rekening di Pengaturan tidak mengubah informasi pada dokumen yang sudah memiliki salinan tersebut. Dokumen lama tanpa salinan memakai pengaturan saat diunduh. Cash tidak menampilkan informasi rekening, e-wallet, atau QRIS.
 
-PDF memakai layout A4 satu halaman yang mengikuti desain Payment Receipt terbaru: header abu-abu terang, aksen oranye, watermark logo, blok summary/total, detail pembayaran, dan QR verifikasi. Invoice memakai bahasa visual yang sama. QR verifikasi memakai error correction H, quiet zone empat modul, dan logo Nalaro yang diperbesar di tengah tanpa menampilkan hostname di sekitar QR. Footer dokumen menautkan `https://www.nalaro.one`. Dokumen dibuat dengan kompresi PDF dan hanya memakai font bawaan agar ukuran tetap kecil tanpa mengurangi ketajaman teks.
+PDF memakai layout A4 satu halaman: header abu-abu terang, aksen oranye, watermark logo tanpa alpha mask, blok summary/total, detail pembayaran, dan QR verifikasi. Invoice memakai bahasa visual yang sama. QR berukuran 36 mm memakai error correction H, quiet zone empat modul, dan logo tengah yang lebih kecil untuk menjaga scan. Label `Scan to verify the transaction` berada tepat di tengah di atas QR. Isi panjang dipadatkan agar QR tetap utuh di atas footer; item yang tidak muat disebutkan jumlahnya, dan isi lengkap tetap tersimpan pada data transaksi. Footer menautkan `https://www.nalaro.one`. PDF yang sudah diunduh perlu diunduh ulang untuk memakai layout terbaru.
 
 ## URL verifikasi
 
@@ -44,6 +60,18 @@ npm run test:pdf
 Pengujian membangun modul PDF untuk produksi, membuka Chromium, menguji unduhan PDF sesungguhnya, empat metode pembayaran, teks panjang, kestabilan salinan informasi pembayaran, migrasi URL lama, parsing token, serta scan QR berlogo pada ukuran 600/300/160 piksel. Keluaran contoh ada di `artifacts/pdf-tests/` (diabaikan Git). Gambar QRIS pada pengujian merupakan kode demo, bukan QRIS pembayaran asli.
 
 `CHROMIUM_EXECUTABLE` dan `CHROMIUM_ARGS` (array JSON) dapat dipakai jika browser disediakan oleh lingkungan pengujian.
+
+## Pengujian form, akses, dan routing
+
+```sh
+npm run test:rules
+node tests/preview.mjs
+npm run test:ui
+```
+
+`test:rules` mengompilasi dan menguji 78 kasus melalui Firebase Rules test API tanpa menulis data produksi. Dibutuhkan Firebase CLI yang sudah login; `FIREBASE_TOOLS_ROOT` dapat menunjuk direktori package `firebase-tools` jika CLI terpasang di luar repo. `test:ui` memeriksa build statis, deep link publik, akses admin, form pada 320/390/1440 piksel, dan kondisi offline. Atur `TEST_BASE_URL` untuk menguji deployment Pages sesungguhnya.
+
+Pengujian batch dan submit browser terhadap emulator tersedia melalui `npm run test:orders`; jalankan Firestore Emulator terlebih dahulu pada port 8085, project `demo-nalaro-orders` (Java 21).
 
 ## CRUD data
 
