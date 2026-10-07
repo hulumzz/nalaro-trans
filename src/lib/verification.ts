@@ -1,19 +1,34 @@
-const LEGACY_BASE = 'https://e-invoice.nalaro.web.id/verif/';
+const LEGACY_BASES = new Set([
+  'https://e-invoice.nalaro.web.id/verif/',
+  'https://e-invoice.nalaro.web.id/verifi/',
+]);
 
-/** A blank URL follows the current deployment, including Pages preview domains. */
+/**
+ * Verification QR links always use the public /verifi/<token> route.
+ * A configured value may be just a domain/origin; its pathname is normalized.
+ */
 export function verificationBaseUrl(settings: any = {}, origin = typeof window !== 'undefined' ? window.location.origin : '') {
   const configured = String(settings?.verificationBaseUrl || '').trim();
   const environment = String(import.meta.env.PUBLIC_VERIFICATION_BASE_URL || '').trim();
-  // Migrate the old seeded setting when the app is hosted on another domain.
-  const inheritedLegacy = configured === LEGACY_BASE && origin && new URL(origin).hostname !== 'e-invoice.nalaro.web.id';
-  const base = (!inheritedLegacy && configured) || environment || (origin ? `${origin}/verif/` : '');
-  if (!base) throw new Error('Alamat verifikasi belum tersedia. Isi URL verifikasi di Pengaturan.');
+
+  let raw = configured || environment || origin;
+  if (configured && LEGACY_BASES.has(configured) && origin) {
+    try {
+      if (new URL(origin).hostname !== 'e-invoice.nalaro.web.id') raw = origin;
+    } catch { /* validation below returns the user-facing error */ }
+  }
+
+  if (!raw) throw new Error('Alamat verifikasi belum tersedia. Isi domain verifikasi di Pengaturan.');
+
   let url: URL;
-  try { url = new URL(base); } catch { throw new Error('URL verifikasi harus berupa alamat lengkap https://…/verif/.'); }
+  try { url = new URL(raw); } catch { throw new Error('URL verifikasi harus berupa alamat lengkap https://domain/.'); }
+
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error('Gunakan URL HTTP/HTTPS tanpa kredensial, query, atau fragment untuk verifikasi.');
   }
-  url.pathname = url.pathname.replace(/\/+$/, '') + '/';
+
+  // Never let a QR point to the app root/login. The public registry route is fixed.
+  url.pathname = '/verifi/';
   return url.href;
 }
 
@@ -24,10 +39,10 @@ export function verificationUrl(token: unknown, settings: any = {}, origin?: str
 }
 
 export function verificationToken(location: Pick<Location, 'pathname' | 'search'>) {
-  // The query form also works on static hosts without path rewrites.
   const query = new URLSearchParams(location.search).get('token');
   if (query) return query;
+
   const parts = location.pathname.split('/').filter(Boolean);
-  if (parts[0] !== 'verif' || !parts[1]) return '';
+  if (!['verifi', 'verif'].includes(parts[0] || '') || !parts[1]) return '';
   try { return decodeURIComponent(parts[1]); } catch { return ''; }
 }
