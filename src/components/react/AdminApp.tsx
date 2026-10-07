@@ -41,16 +41,21 @@ function showDate(value: any) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 function documentNumber(type: 'PRJ' | 'INV' | 'RCPT', id: string, dateValue = '') {
-  const year = /^\d{4}-/.test(dateValue) ? dateValue.slice(0, 4) : String(new Date().getFullYear());
-  return 'NAL/' + type + '/' + year + '/' + id.slice(0, 8).toUpperCase();
+  const year = /^\d{4}-/.test(dateValue) ? dateValue.slice(0, 4) : today().slice(0, 4);
+  return 'NAL/' + type + '/' + year + '/' + id.slice(0, 12).toUpperCase();
 }
 
 function recordCode(prefix: string, id: string) {
-  return prefix + '-' + id.slice(0, 8).toUpperCase();
+  return prefix + '-' + id.slice(0, 12).toUpperCase();
 }
 
 function statusClass(status = '') {
@@ -641,6 +646,7 @@ function Invoices() {
   const { downloading, downloadError, downloadPDF, emailPDF } = usePdfDownload();
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [paying, setPaying] = useState<any>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
@@ -680,10 +686,13 @@ function Invoices() {
 
   const createInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (invoiceBusy) return;
     const project = projects.find((item) => item.id === form.projectId);
     const client = clients.find((item) => item.id === project?.clientId);
     if (!project || !client) return;
 
+    setInvoiceBusy(true);
+    try {
     const subtotal = Number(form.amount || 0);
     const discount = Number(form.discount || 0);
     const grandTotal = Math.max(0, subtotal - discount);
@@ -747,6 +756,11 @@ function Invoices() {
     setForm(blank);
     setShowForm(false);
     await load();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Invoice gagal diterbitkan. Muat ulang lalu coba lagi.');
+    } finally {
+      setInvoiceBusy(false);
+    }
   };
 
   const downloadInvoice = async (invoice: any, email = false) => {
@@ -935,7 +949,7 @@ function Invoices() {
             <label><span>Metode pembayaran</span><select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
             <label className="wide"><span>Catatan</span><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           </div>
-          <div className="form-actions"><span>PPN tidak dipungut</span><button className="primary-button" type="submit">Terbitkan invoice</button></div>
+          <div className="form-actions"><span>PPN tidak dipungut</span><button disabled={invoiceBusy} className="primary-button" type="submit">{invoiceBusy ? 'Menerbitkan…' : 'Terbitkan invoice'}</button></div>
         </form>
       )}
 
