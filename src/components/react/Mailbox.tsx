@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
+import { EMAIL_ASSET_ORIGIN, isBrandedMailbox, renderOutgoingEmail } from '../../lib/email-template';
 import { MAILBOX_CONFIGURED, mailboxService, outgoingFile, downloadMailFile, type MailboxService, type MailConfig, type MailDraft, type MailFolder, type MailMessage, type MailSummary } from '../../lib/mailbox';
 import '../../styles/mailbox.css';
 
@@ -35,6 +36,7 @@ function htmlDocument(html: string) {
 
 export default function Mailbox({ service = mailboxService, configured = MAILBOX_CONFIGURED }: { service?: MailboxService; configured?: boolean }) {
   const [config, setConfig] = useState<MailConfig>();
+  const [preview, setPreview] = useState(false);
   const [mailbox, setMailbox] = useState('');
   const [folder, setFolder] = useState<MailFolder>('inbox');
   const [search, setSearch] = useState('');
@@ -100,14 +102,14 @@ export default function Mailbox({ service = mailboxService, configured = MAILBOX
     document.addEventListener('click', guard, true); return () => document.removeEventListener('click', guard, true);
   }, []);
   const begin = (value = blank(), id?: string) => {
-    setDraft(value); setDraftId(id); setTo(value.to.join(', ')); dirty.current = false; setCompose(true); setError(''); setNotice('');
+    setPreview(false); setDraft(value); setDraftId(id); setTo(value.to.join(', ')); dirty.current = false; setCompose(true); setError(''); setNotice('');
   };
   const editDraft = async (message: MailMessage) => {
     setBusy('draft'); setError('');
     try {
       const attachments = [];
       for (const file of message.attachments) attachments.push(await outgoingFile(await service.file(message.mailbox, message.id, file.id), file.filename));
-      begin({ to: message.to, subject: message.subject, text: message.text, attachments, inReplyTo: message.inReplyTo, references: message.references }, message.id);
+      begin({ to: message.to, subject: message.subject, text: message.text, attachments, inReplyTo: message.inReplyTo, references: message.references, billing: message.billing }, message.id);
     } catch (problem) { setError(errorText(problem)); } finally { setBusy(''); }
   };
   useEffect(() => {
@@ -165,6 +167,10 @@ export default function Mailbox({ service = mailboxService, configured = MAILBOX
     });
   };
   const updateDraft = (field: 'subject' | 'text', value: string) => { dirty.current = true; setDraft((current) => ({ ...current, [field]: value })); };
+  const branded = isBrandedMailbox(mailbox);
+  // Only escaped, locally generated template HTML can load our brand assets.
+  // Received HTML keeps the separate sanitizer and external-image block.
+  const previewHTML = preview && branded ? renderOutgoingEmail({ ...draft, from: mailbox }).html?.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src ${EMAIL_ASSET_ORIGIN}; form-action 'none'; base-uri 'none'">`) : '';
 
   return <section className="admin-page mailbox-page">
     <header className="page-header"><div><p className="page-eyebrow"><span>07 / Correspondence</span></p><h1>Mail Desk</h1><p className="page-description">Percakapan, penawaran, dan kabar baik. Dari alamat Nalaro.</p></div><div className="page-action"><button className="primary-button" disabled={!config || !!busy} onClick={() => begin()}>Tulis email <span>↗</span></button></div></header>
@@ -196,6 +202,6 @@ export default function Mailbox({ service = mailboxService, configured = MAILBOX
         </article>
       </div>
     </>}
-    {compose && <dialog ref={composeRef} className="mail-compose" aria-labelledby="mail-compose-title" onCancel={(event) => { event.preventDefault(); closeCompose(); }}><form onSubmit={(event) => { event.preventDefault(); void run('send', () => save(true)); }}><header><div className="mail-compose-identity"><MailboxAvatar address={mailbox} size="lg" /><div><small>{mailbox}</small><h2 id="mail-compose-title">{draft.inReplyTo ? 'Balas email' : 'Pesan baru'}</h2></div></div><button type="button" aria-label="Tutup editor email" disabled={!!busy} onClick={closeCompose}>×</button></header>{error && <p className="document-error" role="alert">{error}</p>}<fieldset disabled={!!busy}><label><span>To</span><input type="text" aria-label="Penerima email" value={to} onChange={(event) => { dirty.current = true; setTo(event.target.value); }} placeholder="client@example.com" autoFocus /><small>Pisahkan beberapa alamat dengan koma.</small></label><label><span>Subject</span><input aria-label="Subjek email" maxLength={300} value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} placeholder="Tentang pekerjaan berikutnya…" /></label><label className="mail-compose-body"><span>Message</span><textarea aria-label="Isi pesan" maxLength={200000} rows={12} value={draft.text} onChange={(event) => updateDraft('text', event.target.value)} placeholder="Halo," /></label><div className="mail-compose-files">{draft.attachments.map((file, index) => <span key={index}><strong>{file.filename}</strong><button type="button" aria-label={'Hapus lampiran ' + file.filename} onClick={() => { dirty.current = true; setDraft((value) => ({ ...value, attachments: value.attachments.filter((_, position) => index !== position) })); }}>×</button></span>)}<label><span>+ Lampiran</span><input aria-label="Tambah lampiran" type="file" multiple onChange={(event) => { void addFiles(event.target.files); event.target.value = ''; }} /></label><small>Total maksimal 8 MB.</small></div></fieldset><footer><button type="button" className="mail-button" disabled={!!busy} onClick={() => run('save', () => save(false))}>{busy === 'save' ? 'Menyimpan…' : 'Simpan draft'}</button><button className="primary-button" disabled={!!busy || !config?.sendingConfigured}>{busy === 'send' ? 'Mengirim…' : 'Kirim email ↗'}</button></footer></form></dialog>}
+    {compose && <dialog ref={composeRef} className="mail-compose" aria-labelledby="mail-compose-title" onCancel={(event) => { event.preventDefault(); closeCompose(); }}><form onSubmit={(event) => { event.preventDefault(); void run('send', () => save(true)); }}><header><div className="mail-compose-identity"><MailboxAvatar address={mailbox} size="lg" /><div><small>{mailbox}</small><h2 id="mail-compose-title">{draft.inReplyTo ? 'Balas email' : 'Pesan baru'}</h2></div></div><button type="button" aria-label="Tutup editor email" disabled={!!busy} onClick={closeCompose}>×</button></header>{error && <p className="document-error" role="alert">{error}</p>}<div className="mail-branding-note"><span>{branded ? (draft.billing ? 'Template billing · Ringkasan dokumen dan footer Nalaro otomatis.' : 'Template Nalaro · Branding dan footer otomatis.' + (draft.inReplyTo ? ' Banner disertakan pada balasan.' : ' Banner disertakan.')) : 'Email pribadi · Tanpa template branding.'}</span>{branded && <button type="button" className="mail-button" aria-expanded={preview} onClick={() => setPreview((value) => !value)}>{preview ? 'Tutup pratinjau' : 'Pratinjau email'}</button>}</div>{previewHTML && <iframe className="mail-template-preview" title="Pratinjau template email Nalaro" sandbox="" referrerPolicy="no-referrer" srcDoc={previewHTML} />}<fieldset disabled={!!busy}><label><span>To</span><input type="text" aria-label="Penerima email" value={to} onChange={(event) => { dirty.current = true; setTo(event.target.value); }} placeholder="client@example.com" autoFocus /><small>Pisahkan beberapa alamat dengan koma.</small></label><label><span>Subject</span><input aria-label="Subjek email" maxLength={300} value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} placeholder="Tentang pekerjaan berikutnya…" /></label><label className="mail-compose-body"><span>Message</span><textarea aria-label="Isi pesan" maxLength={200000} rows={12} value={draft.text} onChange={(event) => updateDraft('text', event.target.value)} placeholder="Halo," /></label><div className="mail-compose-files">{draft.attachments.map((file, index) => <span key={index}><strong>{file.filename}</strong><button type="button" aria-label={'Hapus lampiran ' + file.filename} onClick={() => { dirty.current = true; setDraft((value) => ({ ...value, attachments: value.attachments.filter((_, position) => index !== position) })); }}>×</button></span>)}<label><span>+ Lampiran</span><input aria-label="Tambah lampiran" type="file" multiple onChange={(event) => { void addFiles(event.target.files); event.target.value = ''; }} /></label><small>Total maksimal 8 MB.</small></div></fieldset><footer><button type="button" className="mail-button" disabled={!!busy} onClick={() => run('save', () => save(false))}>{busy === 'save' ? 'Menyimpan…' : 'Simpan draft'}</button><button className="primary-button" disabled={!!busy || !config?.sendingConfigured}>{busy === 'send' ? 'Mengirim…' : 'Kirim email ↗'}</button></footer></form></dialog>}
   </section>;
 }

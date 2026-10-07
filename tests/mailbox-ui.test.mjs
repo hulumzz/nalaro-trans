@@ -21,6 +21,11 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}) });
 try {
   const page = await browser.newPage({ acceptDownloads: true }); const errors = [], trackerRequests = [];
+  await page.route('https://order.nalaro.digital/brand/**', async (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').pop();
+    if (!['nalaro.png', 'nalaro-email-banner.jpg'].includes(name)) return route.abort();
+    await route.fulfill({ body: await readFile(resolve('public/brand', name)), contentType: name.endsWith('.jpg') ? 'image/jpeg' : 'image/png' });
+  });
   page.on('pageerror', (error) => errors.push(error.message)); page.on('request', (request) => { if (request.url().includes('tracker.invalid')) trackerRequests.push(request.url()); });
   for (const width of [1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 }); await page.goto(origin + '/mailbox.html');
@@ -39,6 +44,13 @@ try {
     const dialogBounds = await page.getByRole('dialog').boundingBox(); assert.ok(dialogBounds.y >= 0 && dialogBounds.y + dialogBounds.height <= 1001, 'Dialog stays within viewport');
     assert.equal(await page.getByLabel('Penerima email').inputValue(), 'reply@example.com');
     assert.match(await page.getByLabel('Subjek email').inputValue(), /^Re:/);
+    await page.getByRole('button', { name: 'Pratinjau email' }).click();
+    const preview = page.frameLocator('.mail-template-preview');
+    await preview.getByRole('heading', { name: /^Re:/ }).waitFor();
+    assert.equal(await preview.locator('body').evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Template preview overflow at ' + width);
+    assert.equal(await page.locator('.mail-template-preview').getAttribute('sandbox'), '');
+    await page.screenshot({ path: `artifacts/mailbox-tests/template-preview-${width}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Tutup pratinjau' }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Composer overflow at ' + width);
     await page.screenshot({ path: `artifacts/mailbox-tests/compose-${width}.png`, fullPage: true });
     await page.getByRole('button', { name: 'Tutup editor email' }).click();

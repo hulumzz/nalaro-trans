@@ -85,7 +85,8 @@ function usePdfDownload() {
     try {
       const mail = await import('../../lib/mailbox');
       const config = await mail.mailboxService.config();
-      const mailbox = config.mailboxes.find((address) => address.startsWith('billing@')) || config.mailboxes[0];
+      const mailbox = config.mailboxes.find((address) => address === 'billing@nalaro.digital');
+      if (!mailbox) throw new Error('Aktifkan billing@nalaro.digital untuk mengirim dokumen pembayaran.');
       const pdf = await import('../../lib/pdf');
       const document = await (kind === 'invoice' ? pdf.buildInvoicePDF : pdf.buildReceiptPDF)(record, client, project, settings);
       const number = String(record.invoiceNumber || record.receiptNumber || 'Nalaro');
@@ -93,8 +94,17 @@ function usePdfDownload() {
       const attachment = await mail.outgoingFile(document.output('blob'), number.replace(/[\\/:*?"<>|]/g, '-') + '.pdf');
       const draft = await mail.mailboxService.save(mailbox, {
         to: client?.email ? [client.email] : [], subject: `Nalaro ${label} — ${number}`,
-        text: `Hello ${client?.picName || client?.name || 'there'},\n\nPlease find attached your ${label.toLowerCase()} for ${project?.name || record.projectName || 'your project'}.\n\n${kind === 'invoice' ? 'Payment information is included in the attached invoice.' : 'Thank you for your payment.'}\n\nBest regards,\nNalaro`,
+        text: `Hello ${client?.picName || client?.name || 'there'},\n\nPlease find attached your ${label.toLowerCase()} for ${project?.name || record.projectName || 'your project'}.\n\n${kind === 'invoice' ? 'Payment information is included in the attached invoice.' : 'Thank you for your payment.'}`,
         attachments: [attachment],
+        billing: {
+          kind, number, project: String(project?.name || record.projectName || ''),
+          amount: Number(kind === 'invoice' ? record.grandTotal : record.amount) || 0,
+          outstanding: kind === 'invoice' ? Math.max(0, Number(record.outstandingAmount ?? (Number(record.grandTotal || 0) - Number(record.paidAmount || 0)))) : 0,
+          status: kind === 'receipt' ? 'paid' : (['paid', 'partial', 'cancelled'].includes(record.status) ? record.status : 'unpaid'),
+          date: String((kind === 'invoice' ? record.dueDate : record.paymentDate) || ''),
+          ...(record.relatedInvoice ? { relatedInvoice: String(record.relatedInvoice) } : {}),
+          ...(record.publicToken ? { verificationToken: String(record.publicToken) } : {}),
+        },
       });
       window.location.assign('/admin/email?mailbox=' + encodeURIComponent(mailbox) + '&draft=' + encodeURIComponent(draft.id));
     } catch (error) { setDownloadError('Draft email belum berhasil dibuat. ' + (error instanceof Error ? error.message : 'Coba lagi.')); }

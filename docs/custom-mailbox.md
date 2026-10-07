@@ -9,7 +9,37 @@ Alur layanan:
 - Login memakai akun Firebase admin yang sudah ada. Gmail tidak diperlukan dalam alur ini.
 - Frontend tetap Astro statis di Cloudflare Pages. Satu Worker terpisah melayani penerimaan email dan API mailbox; bucket R2 diakses melalui binding, bukan API key browser.
 
-## Berkas utama
+## Template email Nalaro
+
+Branding otomatis ditentukan oleh alamat pengirim pada Worker:
+
+| Pengirim | Tampilan |
+| --- | --- |
+| `hello@nalaro.digital` | Client conversation, banner, footer Nalaro |
+| `business@nalaro.digital` | Business & partnerships, banner, footer Nalaro Business |
+| `billing@nalaro.digital` | Billing update; invoice/receipt menampilkan ringkasan dokumen, nominal, status, tanggal, dan tautan verifikasi |
+| `admin@nalaro.digital` | Teks asli, tanpa template branding |
+| `khoirululum@nalaro.digital` | Teks asli, tanpa template branding |
+
+Template bersama berada di `src/lib/email-template.js`. Semua teks dinamis di-escape; HTML dari editor tidak diterima sebagai template. Email dikirim dengan HTML dan alternatif teks lengkap. Lampiran PDF dan header balasan tetap dipertahankan. Payload hasil render disimpan sebelum pengiriman agar retry memakai konten dan idempotency key yang sama.
+
+Editor menyediakan **Pratinjau email** sebelum pengiriman. Pratinjau hanya memuat gambar dari `https://order.nalaro.digital`; gambar eksternal pada email masuk tetap diblokir. Banner tersedia pada `/brand/nalaro-email-banner.jpg` (53.464 byte, 1200 × 400). Email baru dan balasan memakai banner yang sama. Ganti aset tersebut dengan banner final jika diperlukan, kemudian deploy Pages.
+
+Tombol **Email** pada invoice/receipt membuat draft khusus `billing@nalaro.digital`, termasuk lampiran PDF dan metadata billing. Pengirim billing harus tersedia dalam konfigurasi; aplikasi tidak memakai mailbox lain sebagai fallback. Draft dokumen lama yang belum memiliki metadata tetap memakai template billing umum; buat ulang melalui tombol Email untuk mendapatkan ringkasan dokumen.
+
+Perubahan template memerlukan build/deploy Pages **dan** build/deploy Worker mailbox:
+
+```sh
+npm run build:mailbox
+npm run test:email
+npm run test:mailbox
+npm run check
+npm run build
+```
+
+Tidak ada email sungguhan dikirim oleh tes.
+
+## Berkas implementasi
 
 | Berkas | Fungsi |
 | --- | --- |

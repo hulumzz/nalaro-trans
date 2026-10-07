@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import type { BillingEmailDetails } from './email-template';
 
 export type MailFolder = 'inbox' | 'sent' | 'drafts' | 'trash' | 'starred';
 export interface MailAttachment { id: string; filename: string; contentType: string; size: number; }
@@ -9,10 +10,11 @@ export interface MailSummary {
   read: boolean; starred: boolean; status: 'draft' | 'received' | 'accepted' | 'sending' | 'uncertain' | 'failed'; attachmentCount: number;
 }
 export interface MailMessage extends MailSummary {
+  billing?: BillingEmailDetails;
   text: string; html?: string; fromName?: string; replyTo?: string[]; messageId?: string; references?: string;
   inReplyTo?: string; attachments: MailAttachment[]; hasRaw?: boolean; sendError?: string; sentAt?: string; resendId?: string;
 }
-export interface MailDraft { to: string[]; subject: string; text: string; attachments: OutgoingAttachment[]; inReplyTo?: string; references?: string; }
+export interface MailDraft { to: string[]; subject: string; text: string; attachments: OutgoingAttachment[]; inReplyTo?: string; references?: string; billing?: BillingEmailDetails; }
 export interface MailConfig { mailboxes: string[]; senderName: string; sendingConfigured: boolean; maxAttachmentBytes: number; }
 export interface MailboxService {
   config(): Promise<MailConfig>;

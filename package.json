@@ -17,7 +17,8 @@
     "test:rules": "node tests/firestore-service.test.cjs",
     "build:mailbox": "node workers/mailbox/build.mjs",
     "test:mailbox": "node --test tests/mailbox-worker.test.mjs",
-    "test:mailbox-ui": "node tests/mailbox-ui.test.mjs"
+    "test:mailbox-ui": "node tests/mailbox-ui.test.mjs",
+    "test:email": "node --test tests/email-template.test.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",

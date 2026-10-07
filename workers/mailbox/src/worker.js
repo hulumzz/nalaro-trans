@@ -1,5 +1,6 @@
 import PostalMime from 'postal-mime';
 import { ApiError, verifyAdmin } from './auth.js';
+import { renderOutgoingEmail } from '../../../src/lib/email-template.js';
 
 const MAX_RAW = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 8 * 1024 * 1024;
@@ -101,7 +102,23 @@ function draftFields(data, mailbox) {
   for (const key of ['inReplyTo', 'references']) {
     if (data[key] && (typeof data[key] !== 'string' || data[key].length > 2000 || /[\r\n\x00]/.test(data[key]))) throw new ApiError(400, 'Header balasan tidak valid.');
   }
-  return { from: mailbox, to: recipients(data.to, false), subject: data.subject, text: data.text,
+  let billing;
+  if (data.billing != null) {
+    const value = data.billing;
+    if (mailbox !== 'billing@nalaro.digital' || !value || typeof value !== 'object' || Array.isArray(value) ||
+        !['invoice', 'receipt'].includes(value.kind) || !['unpaid', 'paid', 'partial', 'cancelled'].includes(value.status) ||
+        ![value.amount, value.outstanding].every((amount) => Number.isFinite(amount) && amount >= 0 && amount <= 1e15) ||
+        !['number', 'project', 'date'].every((key) => typeof value[key] === 'string' && value[key].length <= 300) || !value.number.trim() ||
+        (value.date && (!/^\d{4}-\d{2}-\d{2}$/.test(value.date) || Number.isNaN(Date.parse(value.date)))) ||
+        (value.relatedInvoice != null && (typeof value.relatedInvoice !== 'string' || value.relatedInvoice.length > 300)) ||
+        (value.verificationToken != null && (typeof value.verificationToken !== 'string' || !/^[a-zA-Z0-9_-]{10,80}$/.test(value.verificationToken)))) {
+      throw new ApiError(400, 'Informasi billing tidak valid atau pengirim bukan billing@nalaro.digital.');
+    }
+    billing = { kind: value.kind, number: value.number, project: value.project, amount: value.amount, outstanding: value.outstanding,
+      status: value.status, date: value.date, ...(value.relatedInvoice ? { relatedInvoice: value.relatedInvoice } : {}),
+      ...(value.verificationToken ? { verificationToken: value.verificationToken } : {}) };
+  }
+  return { from: mailbox, to: recipients(data.to, false), subject: data.subject, text: data.text, billing,
     inReplyTo: data.inReplyTo || '', references: data.references || '' };
 }
 function decodeAttachments(input = []) {
@@ -139,7 +156,7 @@ async function saveDraft(request, env, mailbox, id) {
   const attachments = await storeAttachments(env, mailbox, id, decoded);
   const record = { ...(current?.record || {}), ...fields, id, mailbox, folder: 'drafts', status: 'draft', read: true,
     starred: current?.record.starred || false, createdAt: current?.record.createdAt || nowISO(), updatedAt: nowISO(), attachments };
-  delete record.resendPayload; delete record.sendStartedAt; delete record.sendError;
+  delete record.resendPayload; delete record.sendStartedAt; delete record.sendError; delete record.html;
   if (!await putRecord(env, record, current?.etag)) {
     await env.MAIL_BUCKET.delete(attachments.map((file) => attachmentKey(mailbox, id, file.id)));
     throw new ApiError(409, 'Draft berubah di sesi lain. Muat ulang.');
@@ -169,7 +186,9 @@ async function sendMessage(env, mailbox, id) {
       attachments.push({ filename: file.filename, content: encode64(new Uint8Array(await object.arrayBuffer())) });
     }
     const name = String(env.MAIL_FROM_NAME || 'Nalaro').replace(/[<>\r\n\x00]/g, '').slice(0, 80);
-    record.resendPayload = { from: `${name} <${mailbox}>`, to: record.to, subject: record.subject, text: record.text, reply_to: mailbox,
+    const rendered = renderOutgoingEmail(record);
+    if (rendered.html) record.html = rendered.html;
+    record.resendPayload = { from: `${name} <${mailbox}>`, to: record.to, subject: record.subject, ...rendered, reply_to: mailbox,
       ...(attachments.length ? { attachments } : {}),
       ...(record.inReplyTo ? { headers: { 'In-Reply-To': record.inReplyTo, References: record.references || record.inReplyTo } } : {}) };
   }

@@ -122,6 +122,31 @@ test('network ambiguity retries the identical payload and idempotency key', asyn
   resendResult = () => Response.json({ id: 'retry-success' }); const retry = await api('/messages/' + message.id + '/send', { method: 'POST' });
   assert.equal(retry.data.message.status, 'accepted'); assert.equal(resendCalls[0].body, resendCalls[1].body); assert.equal(resendCalls[0].headers['Idempotency-Key'], resendCalls[1].headers['Idempotency-Key']);
 });
+test('branding payload and billing metadata survive draft edit and sending', async () => {
+  const billing = { kind: 'invoice', number: 'NAL/INV/2026/123456', project: 'Website desa', amount: 1000000, outstanding: 1000000, status: 'unpaid', date: '2026-10-30', verificationToken: 'a'.repeat(20) };
+  const saved = await api('/drafts', { method: 'POST', address: 'billing@nalaro.digital', body: { to: ['client@example.com'], subject: 'Invoice', text: 'Hello client', billing } });
+  assert.equal(saved.response.status, 200); assert.deepEqual(saved.data.message.billing, billing);
+  const sent = await api('/messages/' + saved.data.message.id + '/send', { method: 'POST', address: 'billing@nalaro.digital' });
+  const payload = JSON.parse(resendCalls[0].body);
+  assert.ok(payload.html.includes('UNPAID')); assert.ok(payload.html.includes('/verifi/' + billing.verificationToken));
+  assert.ok(payload.text.includes('Invoice total:')); assert.equal(sent.data.message.html, payload.html);
+});
+test('personal mailbox sends exact text without branding or HTML', async () => {
+  for (const address of ['admin@nalaro.digital', 'khoirululum@nalaro.digital']) {
+    env.MAILBOX_ADDRESSES += ',' + address;
+    const saved = await api('/drafts', { method: 'POST', address, body: { to: ['client@example.com'], subject: 'Personal', text: 'Exact personal text' } });
+    await api('/messages/' + saved.data.message.id + '/send', { method: 'POST', address });
+    const payload = JSON.parse(resendCalls.at(-1).body);
+    assert.equal(payload.text, 'Exact personal text'); assert.equal(payload.html, undefined);
+  }
+});
+test('billing cannot be spoofed through another mailbox or malformed metadata', async () => {
+  const billing = { kind: 'invoice', number: 'INV', project: '', amount: 1, outstanding: 1, status: 'unpaid', date: '' };
+  assert.equal((await api('/drafts', { method: 'POST', body: { to: [], subject: '', text: '', billing } })).response.status, 400);
+  for (const override of [{ amount: -1 }, { date: 'bad' }, { verificationToken: 'javascript:alert(1)' }, { kind: 'unknown' }]) {
+    assert.equal((await api('/drafts', { method: 'POST', address: 'billing@nalaro.digital', body: { to: [], subject: '', text: '', billing: { ...billing, ...override } } })).response.status, 400);
+  }
+});
 test('concurrent sends take one conditional lock', async () => {
   const message = await draft(); let release; resendResult = () => new Promise((resolve) => { release = resolve; });
   const first = api('/messages/' + message.id + '/send', { method: 'POST' });

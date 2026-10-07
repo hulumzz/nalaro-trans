@@ -2,7 +2,7 @@
 // Bind private R2 as MAIL_BUCKET; configure environment variables and RESEND_API_KEY secret.
 // Source: workers/mailbox/src/worker.js. Do not hand-edit this generated file.
 
-// node_modules/postal-mime/dist/esm/decode-strings.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/decode-strings.js
 var textEncoder = new TextEncoder();
 var base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 var base64Lookup = new Uint8Array(256);
@@ -403,7 +403,7 @@ function decodeParameterValueContinuations(header) {
   });
 }
 
-// node_modules/postal-mime/dist/esm/pass-through-decoder.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/pass-through-decoder.js
 var PassThroughDecoder = class {
   constructor() {
     this.chunks = [];
@@ -429,7 +429,7 @@ var PassThroughDecoder = class {
   }
 };
 
-// node_modules/postal-mime/dist/esm/base64-decoder.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/base64-decoder.js
 var Base64Decoder = class {
   constructor(opts) {
     opts = opts || {};
@@ -468,7 +468,7 @@ var Base64Decoder = class {
   }
 };
 
-// node_modules/postal-mime/dist/esm/qp-decoder.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/qp-decoder.js
 var CHR_EQUALS = 61;
 var CHR_LF = 10;
 var QPDecoder = class {
@@ -548,7 +548,7 @@ var QPDecoder = class {
   }
 };
 
-// node_modules/postal-mime/dist/esm/mime-node.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/mime-node.js
 var headerDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 var isWsp = (c) => c === 32 || c === 9;
 var trimWsp = (str) => {
@@ -938,7 +938,7 @@ var MimeNode = class {
   }
 };
 
-// node_modules/postal-mime/dist/esm/html-entities.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/html-entities.js
 var htmlEntities = {
   "&AElig": "\xC6",
   "&AElig;": "\xC6",
@@ -3173,7 +3173,7 @@ var htmlEntities = {
   "&zwnj;": "\u200C"
 };
 
-// node_modules/postal-mime/dist/esm/text-format.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/text-format.js
 function decodeHTMLEntities(str) {
   return str.replace(/&(#\d+|#x[a-f0-9]+|[a-z]+\d*);?/gi, (match, entity) => {
     if (typeof htmlEntities[match] === "string") {
@@ -3343,13 +3343,13 @@ function htmlToText(str) {
   str = decodeHTMLEntities(str);
   return str;
 }
-function formatDate(date) {
+function formatDate(date2) {
   if (typeof Intl === "undefined") {
-    return date;
+    return date2;
   }
-  const parsed = new Date(date);
+  const parsed = new Date(date2);
   if (isNaN(parsed.getTime())) {
-    return date;
+    return date2;
   }
   return new Intl.DateTimeFormat("default", {
     year: "numeric",
@@ -3502,7 +3502,7 @@ function formatHtmlHeader(message) {
   return template;
 }
 
-// node_modules/postal-mime/dist/esm/address-parser.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/address-parser.js
 var HAS_WHITESPACE = /\s/;
 var QUOTED_LOCAL_ADDR = /^("(?:[^"\\]|\\[\s\S])*"@\S+)(?:\s+([\s\S]+))?$/;
 var ADDR_SPEC = /^[^@\s]+@[^@\s]+$/;
@@ -4038,7 +4038,7 @@ function addressParser(str, options) {
 }
 var address_parser_default = addressParser;
 
-// node_modules/postal-mime/dist/esm/base64-encoder.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/base64-encoder.js
 function base64ArrayBuffer(arrayBuffer) {
   let base64 = "";
   const encodings = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -4071,7 +4071,7 @@ function base64ArrayBuffer(arrayBuffer) {
   return base64;
 }
 
-// node_modules/postal-mime/dist/esm/postal-mime.js
+// ../../fb920d33c789/nalaro-trans/node_modules/postal-mime/dist/esm/postal-mime.js
 function isReadableStream(value) {
   return !!value && typeof value.getReader === "function";
 }
@@ -4489,8 +4489,8 @@ var PostalMime = class _PostalMime {
     }
     let dateHeader = headers.find((line) => line.key === "date");
     if (dateHeader) {
-      let date = new Date(dateHeader.value);
-      message.date = date.toString() === "Invalid Date" ? dateHeader.value : date.toISOString();
+      let date2 = new Date(dateHeader.value);
+      message.date = date2.toString() === "Invalid Date" ? dateHeader.value : date2.toISOString();
     }
     if (this.textContent.html) {
       message.html = this.textContent.html;
@@ -4605,6 +4605,71 @@ async function verifyAdmin(request, env) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(401, "Sesi tidak valid atau kedaluwarsa. Login ulang.");
   }
+}
+
+// src/lib/email-template.js
+var EMAIL_ASSET_ORIGIN = "https://order.nalaro.digital";
+var EMAIL_BANNER_URL = `${EMAIL_ASSET_ORIGIN}/brand/nalaro-email-banner.jpg`;
+var WEBSITE = "https://www.nalaro.digital";
+var profiles = {
+  "hello@nalaro.digital": { label: "CLIENT CONVERSATION", team: "Nalaro", note: "Percakapan dan dukungan untuk proyek Anda." },
+  "business@nalaro.digital": { label: "BUSINESS & PARTNERSHIPS", team: "Nalaro Business", note: "Kerja sama, penawaran, dan ide berikutnya." },
+  "billing@nalaro.digital": { label: "BILLING UPDATE", team: "Nalaro Billing", note: "Informasi tagihan dan pembayaran proyek Anda." }
+};
+function isBrandedMailbox(address) {
+  return Object.hasOwn(profiles, String(address).trim().toLowerCase());
+}
+var escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+var currency = (value) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
+var date = (value) => {
+  if (!value) return "\u2014";
+  const parsed = /* @__PURE__ */ new Date(value + "T00:00:00Z");
+  return Number.isNaN(parsed.getTime()) ? "\u2014" : new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(parsed);
+};
+function renderOutgoingEmail({ from, subject, text, billing, year = (/* @__PURE__ */ new Date()).getUTCFullYear() }) {
+  const address = String(from).trim().toLowerCase();
+  const profile = isBrandedMailbox(address) ? profiles[address] : void 0;
+  if (!profile) return { text };
+  const detail = address === "billing@nalaro.digital" ? billing : void 0;
+  const label = detail ? detail.kind === "invoice" ? "INVOICE" : "PAYMENT RECEIPT" : profile.label;
+  const title = detail ? detail.kind === "invoice" ? "Your project invoice" : "Payment received. Thank you." : subject;
+  const status = detail ? detail.kind === "receipt" ? "PAID" : { paid: "PAID", unpaid: "UNPAID", partial: "PARTIALLY PAID", cancelled: "CANCELLED" }[detail.status] || "INVOICE" : "";
+  const paid = status === "PAID";
+  const rows = detail ? [
+    ["Document", detail.number],
+    ["Project", detail.project],
+    [detail.kind === "invoice" ? "Invoice total" : "Amount received", currency(detail.amount)],
+    ...detail.kind === "invoice" ? [["Amount due", currency(detail.outstanding)], ["Due date", date(detail.date)]] : [["Payment date", date(detail.date)]],
+    ...detail.relatedInvoice ? [["Related invoice", detail.relatedInvoice]] : []
+  ].filter(([, value]) => value) : [];
+  const verification = detail?.verificationToken && /^[a-zA-Z0-9_-]{10,80}$/.test(detail.verificationToken) ? `${EMAIL_ASSET_ORIGIN}/verifi/${detail.verificationToken}` : "";
+  const summary2 = detail ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e7e7e7;background:#fafafa;margin:24px 0;"><tr><td style="padding:20px;"><p style="margin:0 0 14px;"><span style="display:inline-block;background:${paid ? "#e8f5ed" : "#fff0e9"};color:${paid ? "#176339" : "#a83210"};padding:6px 10px;font-size:11px;font-weight:bold;letter-spacing:1px;">${status}</span></p><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.map(([key, value]) => `<tr><td style="padding:7px 12px 7px 0;font-size:13px;color:#626262;vertical-align:top;">${escape(key)}</td><td align="right" style="padding:7px 0;font-size:14px;font-weight:bold;color:#151515;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">${escape(value)}</td></tr>`).join("")}</table></td></tr></table><p class="mail-muted" style="font-size:13px;color:#626262;line-height:1.7;">The PDF document is attached to this email.${verification ? " You can also verify its authenticity online." : ""}</p>${verification ? `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="#ff5b2e" style="border-radius:4px;"><a href="${verification}" style="display:inline-block;padding:13px 20px;color:#171717;font-weight:bold;font-size:14px;text-decoration:none;">Verify ${detail.kind === "invoice" ? "invoice" : "payment receipt"} &rarr;</a></td></tr></table>` : ""}` : "";
+  const paragraphs = String(text).split(/\r?\n\s*\r?\n/).map((part) => `<p style="margin:0 0 18px;line-height:1.75;overflow-wrap:anywhere;word-break:break-word;">${escape(part).replace(/\r?\n/g, "<br>")}</p>`).join("");
+  const preview = detail ? `${label} ${detail.number} \xB7 ${currency(detail.amount)} \xB7 ${status}` : String(text).replace(/\s+/g, " ").slice(0, 140);
+  const language = detail ? "en" : "id";
+  const html = `<!doctype html>
+<html lang="${language}" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escape(subject)}</title>
+<style>@media only screen and (max-width:620px){.mail-shell{width:100%!important}.mail-pad{padding:26px 22px!important}.mail-outer{padding:16px 8px!important}.mail-title{font-size:25px!important}}@media(prefers-color-scheme:dark){.mail-background{background:#101010!important}.mail-card{background:#171717!important;color:#f5f5f5!important}.mail-title{color:#f5f5f5!important}.mail-muted{color:#bdbdbd!important}.mail-footer a{color:#ff8c6c!important}}</style></head>
+<body class="mail-background" style="margin:0;padding:0;background:#f4f4f2;font-family:Arial,Helvetica,sans-serif;color:#252525;">
+<div lang="${language}" dir="ltr" style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escape(preview)}</div>
+<table lang="${language}" dir="ltr" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td class="mail-outer" align="center" style="padding:36px 16px;">
+<table class="mail-shell" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;table-layout:fixed;">
+<tr><td class="mail-card" bgcolor="#ffffff" style="border:1px solid #e5e5e3;border-top:4px solid #ff5b2e;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td class="mail-pad" style="padding:32px 36px 22px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td width="40" bgcolor="#0b0c0a" style="border-radius:6px;"><a href="${WEBSITE}"><img src="${EMAIL_ASSET_ORIGIN}/brand/nalaro.png" width="40" height="40" alt="Visit Nalaro" style="display:block;border:0;"></a></td><td style="padding-left:12px;font-size:24px;font-weight:bold;letter-spacing:-1px;">Nalaro<span style="color:#ff5b2e;">.</span></td></tr></table></td></tr>
+<tr><td class="mail-pad" style="padding:12px 36px 32px;"><p style="margin:0 0 18px;"><span style="display:inline-block;background:#fff0e9;color:#a83210;padding:7px 11px;font-size:11px;font-weight:bold;letter-spacing:1.3px;">${label}</span></p><h1 class="mail-title" style="margin:0 0 24px;font-size:29px;line-height:1.25;letter-spacing:-.6px;color:#151515;overflow-wrap:anywhere;word-break:break-word;">${escape(title)}</h1><div style="font-size:15px;">${paragraphs}</div>${summary2}</td></tr>
+<tr><td style="border-top:1px solid #ededeb;"><a href="${WEBSITE}"><img src="${EMAIL_BANNER_URL}" width="600" alt="Nalaro \u2014 Build everything you want! Visit our website." style="display:block;width:100%;max-width:600px;height:auto;border:0;"></a></td></tr>
+</table></td></tr>
+<tr><td class="mail-pad mail-muted mail-footer" lang="id" align="left" style="padding:24px 36px;color:#626262;font-size:12px;line-height:1.8;"><p style="margin:0 0 8px;font-weight:bold;font-size:13px;">${profile.team}</p><p style="margin:0 0 12px;">${profile.note}<br>Balas email ini untuk melanjutkan percakapan dengan tim kami.</p><p style="margin:0;"><a href="${WEBSITE}" style="color:#a83210;text-decoration:underline;">Website Nalaro</a><span aria-hidden="true"> &nbsp;\xB7&nbsp; </span><a href="mailto:${address}" style="color:#a83210;text-decoration:underline;">${address}</a></p><p style="margin:12px 0 0;font-size:11px;">&copy; ${year} Nalaro. All rights reserved.</p></td></tr>
+</table></td></tr></table></body></html>`;
+  return { html, text: `${text}${detail ? "\n\n" + status + "\n" + rows.map(([key, value]) => key + ": " + value).join("\n") + "\nPDF document attached." + (verification ? "\nVerify document: " + verification : "") : ""}
+
+\u2014
+${profile.team}
+${profile.note}
+Balas email ini untuk melanjutkan percakapan.
+${WEBSITE}
+${address}
+\xA9 ${year} Nalaro.` };
 }
 
 // workers/mailbox/src/worker.js
@@ -4737,11 +4802,30 @@ function draftFields(data, mailbox) {
   for (const key of ["inReplyTo", "references"]) {
     if (data[key] && (typeof data[key] !== "string" || data[key].length > 2e3 || /[\r\n\x00]/.test(data[key]))) throw new ApiError(400, "Header balasan tidak valid.");
   }
+  let billing;
+  if (data.billing != null) {
+    const value = data.billing;
+    if (mailbox !== "billing@nalaro.digital" || !value || typeof value !== "object" || Array.isArray(value) || !["invoice", "receipt"].includes(value.kind) || !["unpaid", "paid", "partial", "cancelled"].includes(value.status) || ![value.amount, value.outstanding].every((amount) => Number.isFinite(amount) && amount >= 0 && amount <= 1e15) || !["number", "project", "date"].every((key) => typeof value[key] === "string" && value[key].length <= 300) || !value.number.trim() || value.date && (!/^\d{4}-\d{2}-\d{2}$/.test(value.date) || Number.isNaN(Date.parse(value.date))) || value.relatedInvoice != null && (typeof value.relatedInvoice !== "string" || value.relatedInvoice.length > 300) || value.verificationToken != null && (typeof value.verificationToken !== "string" || !/^[a-zA-Z0-9_-]{10,80}$/.test(value.verificationToken))) {
+      throw new ApiError(400, "Informasi billing tidak valid atau pengirim bukan billing@nalaro.digital.");
+    }
+    billing = {
+      kind: value.kind,
+      number: value.number,
+      project: value.project,
+      amount: value.amount,
+      outstanding: value.outstanding,
+      status: value.status,
+      date: value.date,
+      ...value.relatedInvoice ? { relatedInvoice: value.relatedInvoice } : {},
+      ...value.verificationToken ? { verificationToken: value.verificationToken } : {}
+    };
+  }
   return {
     from: mailbox,
     to: recipients(data.to, false),
     subject: data.subject,
     text: data.text,
+    billing,
     inReplyTo: data.inReplyTo || "",
     references: data.references || ""
   };
@@ -4794,6 +4878,7 @@ async function saveDraft(request, env, mailbox, id) {
   delete record.resendPayload;
   delete record.sendStartedAt;
   delete record.sendError;
+  delete record.html;
   if (!await putRecord(env, record, current?.etag)) {
     await env.MAIL_BUCKET.delete(attachments.map((file) => attachmentKey(mailbox, id, file.id)));
     throw new ApiError(409, "Draft berubah di sesi lain. Muat ulang.");
@@ -4824,11 +4909,13 @@ async function sendMessage(env, mailbox, id) {
       attachments.push({ filename: file.filename, content: encode64(new Uint8Array(await object.arrayBuffer())) });
     }
     const name = String(env.MAIL_FROM_NAME || "Nalaro").replace(/[<>\r\n\x00]/g, "").slice(0, 80);
+    const rendered = renderOutgoingEmail(record);
+    if (rendered.html) record.html = rendered.html;
     record.resendPayload = {
       from: `${name} <${mailbox}>`,
       to: record.to,
       subject: record.subject,
-      text: record.text,
+      ...rendered,
       reply_to: mailbox,
       ...attachments.length ? { attachments } : {},
       ...record.inReplyTo ? { headers: { "In-Reply-To": record.inReplyTo, References: record.references || record.inReplyTo } } : {}
