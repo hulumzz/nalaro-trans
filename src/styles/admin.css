@@ -40,6 +40,18 @@ img,svg{display:block;max-width:100%}
 .admin-mobilebar{display:none}
 .sidebar-scrim{display:none}
 
+/* Keep every desktop menu item visible on shorter laptop viewports. */
+@media(min-width:761px){
+  .admin-sidebar{height:100dvh}
+  .sidebar-head{padding:clamp(12px,2.6dvh,24px) 24px}
+  .sidebar-head p{margin-top:clamp(8px,1.6dvh,14px)}
+  .admin-sidebar nav{padding:clamp(8px,1.6dvh,16px) 12px;gap:1px}
+  .admin-sidebar nav a,.sidebar-foot>a{min-height:clamp(32px,5.3dvh,47px)}
+  .sidebar-foot{padding:8px 12px}
+  .sidebar-foot button{min-height:clamp(32px,5.3dvh,44px)}
+  .sidebar-foot small{padding:8px 12px 4px}
+}
+
 .admin-page{width:min(1180px,calc(100% - 72px));margin:0 auto;padding:58px 0 80px}
 .page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:40px;padding-bottom:30px;border-bottom:1px solid var(--color-line);margin-bottom:34px}
 .page-eyebrow{font:500 10px var(--font-mono);letter-spacing:.09em;color:var(--color-mute);text-transform:uppercase;margin-bottom:15px}.page-eyebrow span::before{content:"";display:inline-block;width:6px;height:6px;background:var(--color-flare);margin-right:11px}

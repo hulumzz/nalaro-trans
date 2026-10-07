@@ -1205,12 +1205,15 @@ function AdminLayout() {
           <p>PROJECT DESK / INTERNAL</p>
         </div>
 
-        <nav>
+        <nav aria-label="Navigasi Project Desk">
           {navigation.map(([number, label, path]) => (
             <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => isActive ? 'active' : ''}>
               <span>{number}</span><strong>{label}</strong><i>↗</i>
             </NavLink>
           ))}
+          <a className="order-form-link" href="/form/order" target="_blank" rel="noopener noreferrer">
+            <span aria-hidden="true">↗</span><strong>Form</strong>
+          </a>
         </nav>
 
         <div className="sidebar-foot">
@@ -1218,7 +1221,6 @@ function AdminLayout() {
             <span>08</span><strong>Settings</strong><i>↗</i>
           </NavLink>
           <button onClick={logout}><span>×</span><strong>Keluar</strong></button>
-          <a className="order-form-link" href="/form/order" target="_blank" rel="noopener noreferrer">Form order klien ↗</a>
           <small>order.nalaro.digital</small>
         </div>
       </aside>
