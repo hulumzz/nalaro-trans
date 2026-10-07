@@ -38,16 +38,26 @@ try {
     await download.saveAs(resolve(output, kind + '-download.pdf'));
     for (const method of ['Bank Transfer', 'QRIS', 'Cash', 'E-Wallet']) {
       const result = await page.evaluate(({ kind, method }) => window.testAPI.pdf(kind, method), { kind, method });
+      assert.equal(result.pages, 1, 'Normal export must be one page');
       await writeFile(resolve(output, `${kind}-${method.replaceAll(' ', '-')}.pdf`), Buffer.from(result.pdf.split(',')[1], 'base64'));
       console.log(`${kind} / ${method}: ${result.pages} page(s)`);
     }
     const long = await page.evaluate((kind) => window.testAPI.pdf(kind, 'QRIS', true), kind);
-    assert.ok(long.pages > 1, 'Long content must paginate');
+    assert.equal(long.pages, 1, 'Expanded content must fit one page');
     await writeFile(resolve(output, kind + '-long.pdf'), Buffer.from(long.pdf.split(',')[1], 'base64'));
-    console.log(`${kind} / long content: ${long.pages} pages`);
+    console.log(`${kind} / expanded content: ${long.pages} page`);
+    const combined = await page.evaluate((kind) => window.testAPI.pdf(kind, 'QRIS', 'combined'), kind);
+    assert.equal(combined.pages, 1, 'Portrait QRIS artwork and bank details must fit one page');
+    await writeFile(resolve(output, kind + '-combined.pdf'), Buffer.from(combined.pdf.split(',')[1], 'base64'));
+    const oversized = await page.evaluate(async (kind) => {
+      try { await window.testAPI.pdf(kind, 'QRIS', 'oversized'); return ''; }
+      catch (error) { return error.message; }
+    }, kind);
+    assert.match(oversized, /satu halaman A4/, 'Oversized content must be rejected instead of silently clipped or paginated');
+    console.log(`${kind} / portrait QRIS + bank: one page; oversized content: safely rejected`);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: real PDF downloads, all payment methods, pagination and branded QR decoding.');
+  console.log('PASS: real PDF downloads, single-page exports, portrait QRIS + bank information, overflow protection and branded QR decoding.');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));

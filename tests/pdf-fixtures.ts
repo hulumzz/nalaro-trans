@@ -13,15 +13,32 @@ const receipt = { receiptNumber: 'NAL/RCPT/2026/TEST', relatedInvoice: invoice.i
 
 const api = {
   invoice, receipt, client, project, settings,
-  async pdf(kind: 'invoice' | 'receipt', method = 'Bank Transfer', long = false) {
+  async pdf(kind: 'invoice' | 'receipt', method = 'Bank Transfer', long: boolean | 'combined' | 'oversized' = false) {
     const config = { ...settings, qrisImage: await QRCode.toDataURL('DEMO PAYMENT - NOT A REAL QRIS', { margin: 4, width: 400 }) };
     const record: any = { ...(kind === 'invoice' ? invoice : receipt), paymentMethod: method };
-    const customer = long ? { ...client, name: client.name.repeat(10), address: client.address.repeat(20), picName: client.picName.repeat(5) } : client;
-    const job = long ? { ...project, name: project.name.repeat(20) } : project;
-    if (long) {
-      record.notes = 'CATATAN LENGKAP ' + 'Pekerjaan disepakati secara tertulis dan dilaksanakan bertahap. '.repeat(200) + ' AKHIR CATATAN';
-      record.paymentReference = 'REFERENSI PANJANG '.repeat(40);
-      if (kind === 'invoice') record.items = Array.from({ length: 25 }, (_, index) => ({ description: 'Layanan nomor ' + index, details: 'Deskripsi lengkap layanan dan ruang lingkup yang harus tetap terbaca. '.repeat(index === 0 ? 150 : 4) + ' AKHIR ITEM ' + index, quantity: 1, unitPrice: 100000, total: 100000 }));
+    const expanded = long === true;
+    const customer = expanded ? { ...client, name: client.name.repeat(2), address: client.address.repeat(3) } : client;
+    const job = expanded ? { ...project, name: project.name.repeat(2) } : project;
+    if (expanded) {
+      record.notes = 'Reviewed and approved. ' + 'Deliverables follow the agreed project scope. '.repeat(4) + 'END OF NOTES';
+      record.paymentReference = 'BANK-REFERENCE-1234567890';
+      if (kind === 'invoice') {
+        record.items = Array.from({ length: 6 }, (_, index) => ({ description: 'Service ' + (index + 1), details: 'Configuration and delivery of the agreed service. END ITEM ' + index, quantity: 1, unitPrice: 100000, total: 100000 }));
+        record.subtotal = record.grandTotal = 600000;
+      }
+    }
+    if (long === 'combined') {
+      // Full portrait payment artwork plus account information from an issued snapshot.
+      const qr = new Image(); qr.src = config.qrisImage; await qr.decode();
+      const artwork = document.createElement('canvas'); artwork.width = 500; artwork.height = 740;
+      const context = artwork.getContext('2d')!; context.fillStyle = '#fff'; context.fillRect(0, 0, 500, 740);
+      context.fillStyle = '#20211e'; context.font = 'bold 28px sans-serif'; context.fillText('QRIS PAYMENT', 40, 60);
+      context.drawImage(qr, 40, 110, 420, 420); context.font = '20px sans-serif'; context.fillText('NALARO DEMO', 40, 600);
+      record.paymentDetails = { method: 'Bank Transfer / QRIS', kind: 'bank', lines: ['BANK CONTOH', 'No. rekening: 000123456789', 'a.n. Penerima Contoh', 'Payment reference: ' + invoice.invoiceNumber], qrisImage: artwork.toDataURL() };
+      record.notes = 'Please use the invoice number as your payment reference. END OF NOTES';
+    }
+    if (long === 'oversized') {
+      record.notes = 'Complete project conditions and acceptance requirements. '.repeat(1000) + 'END OF NOTES';
     }
     const doc = await (kind === 'invoice' ? buildInvoicePDF : buildReceiptPDF)(record, customer, job, config);
     return { pages: doc.getNumberOfPages(), pdf: doc.output('datauristring') };
@@ -40,6 +57,8 @@ const api = {
       if (!failed) throw new Error('Invalid verification URL accepted');
     }
     if (paymentInformation('Cash', settings).lines.length || paymentInformation('Cash', settings).qrisImage) throw new Error('Cash contains payment destination');
+    const migrated = documentPaymentInformation({ paymentDetails: { kind: 'bank', lines: ['No. rekening: 000123456789', 'a.n. Penerima Contoh'] } }, {});
+    if (migrated.lines.join('|') !== 'Account no.: 000123456789|Account name: Penerima Contoh') throw new Error('Legacy payment labels were not translated');
     const snapshot = paymentInformation('Bank Transfer', settings);
     if (documentPaymentInformation({ paymentDetails: snapshot }, { bankName: 'CHANGED' }).lines[0] !== 'BANK CONTOH') throw new Error('Issued payment destination changed');
     const logo = await new Promise<string>((resolve) => { const img = new Image(); img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d')!.drawImage(img, 0, 0); resolve(canvas.toDataURL()); }; img.src = '/android-chrome-192x192.png'; });

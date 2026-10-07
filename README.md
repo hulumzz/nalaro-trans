@@ -24,7 +24,7 @@ Cloudflare Pages: build command `npm run build`, output directory `dist`. Aturan
 
 Informasi pembayaran pada dokumen baru disimpan ketika invoice diterbitkan atau pembayaran dicatat. Receipt memakai informasi pembayaran yang tercatat pada pembayaran tersebut. Perubahan rekening di Pengaturan tidak mengubah informasi pada dokumen yang sudah memiliki salinan tersebut. Dokumen lama tanpa salinan memakai pengaturan saat diunduh. Cash tidak menampilkan informasi rekening, e-wallet, atau QRIS.
 
-PDF memakai header abu-abu, logo Nalaro, pembungkusan teks, tabel dengan pergantian halaman, nomor halaman, dan dua kode yang dibedakan jelas ketika QRIS dipilih: **QRIS pembayaran** dan **QR verifikasi dokumen**. Logo hanya ditambahkan ke QR verifikasi, dengan error correction H dan quiet zone empat modul.
+PDF invoice/receipt memakai label bahasa Inggris dan layout satu halaman A4. Detail pembayaran, QRIS, dan QR verifikasi disusun dalam satu baris. Catatan invoice diletakkan di samping ringkasan total. Teks membungkus dan ukuran konten menyesuaikan secara terbatas (minimum 7 pt), sementara ukuran QR tetap. Keterangan otomatis yang berulang dihapus. Jika isi terlalu banyak untuk satu halaman yang terbaca, unduhan menampilkan pesan agar detail item/catatan diringkas; data tidak dipotong dan halaman kedua tidak diterbitkan. Header tetap abu-abu dengan logo Nalaro. Dua kode dibedakan jelas ketika QRIS dipilih: **QRIS pembayaran** dan **QR verifikasi dokumen**. Logo hanya ditambahkan ke QR verifikasi, dengan error correction H dan quiet zone empat modul.
 
 ## URL verifikasi
 
@@ -41,6 +41,6 @@ npx playwright install chromium
 npm run test:pdf
 ```
 
-Pengujian membangun modul PDF untuk produksi, membuka Chromium, menguji unduhan PDF sesungguhnya, empat metode pembayaran, teks panjang, kestabilan salinan informasi pembayaran, migrasi URL lama, parsing token, serta scan QR berlogo pada ukuran 600/300/160 piksel. Keluaran contoh ada di `artifacts/pdf-tests/` (diabaikan Git). Gambar QRIS pada pengujian merupakan kode demo, bukan QRIS pembayaran asli.
+Pengujian membangun modul PDF untuk produksi, membuka Chromium, menguji unduhan PDF sesungguhnya, empat metode pembayaran, satu halaman dengan isi lebih panjang, gambar QRIS potret bersama informasi bank, penolakan isi yang melebihi kapasitas, kestabilan salinan informasi pembayaran, migrasi URL lama, parsing token, serta scan QR berlogo pada ukuran 600/300/160 piksel. Keluaran contoh ada di `artifacts/pdf-tests/` (diabaikan Git). Gambar QRIS pada pengujian merupakan kode demo, bukan QRIS pembayaran asli.
 
 `CHROMIUM_EXECUTABLE` dan `CHROMIUM_ARGS` (array JSON) dapat dipakai jika browser disediakan oleh lingkungan pengujian.
