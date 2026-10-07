@@ -167,7 +167,7 @@ function drawValue(doc: jsPDF, value: unknown, x: number, y: number, width: numb
   return fitted.height;
 }
 
-function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string) {
+function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string, settings: any = {}) {
   doc.setFillColor(...PAPER);
   doc.rect(0, 0, 210, 39, 'F');
   doc.setFillColor(...FLARE);
@@ -182,7 +182,7 @@ function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string) {
   setText(doc, 19.5, 'bold', INK);
   doc.text('NALARO', 39, 20.2);
   setText(doc, 6.8, 'normal', MUTED);
-  doc.text(PUBLIC_SITE, 39, 26.1);
+  doc.text(settings?.website || 'https://nalaro.web.id', 39, 26.1);
 
   setText(doc, 20, 'bold', FLARE);
   doc.text(title, RIGHT, 19.2, { align: 'right' });
@@ -331,7 +331,7 @@ function partyBlock(doc: jsPDF, leftLabel: string, leftLines: unknown[], rightLa
 export async function buildReceiptPDF(receipt: any, client: any, project: any, settings: any = {}) {
   const assets = await createAssets();
   const doc = createDoc('Payment Receipt', receipt.receiptNumber || '');
-  drawHeader(doc, assets, 'PAYMENT RECEIPT', 'PAID');
+  drawHeader(doc, assets, 'PAYMENT RECEIPT', 'PAID', settings);
   drawWatermark(doc, assets, 116);
 
   drawMeta(doc, [
@@ -398,7 +398,7 @@ export async function buildInvoicePDF(invoice: any, client: any, project: any, s
   const assets = await createAssets();
   const doc = createDoc('Invoice', invoice.invoiceNumber || '');
   const status = String(invoice.status || 'unpaid').replaceAll('_', ' ').toUpperCase();
-  drawHeader(doc, assets, 'INVOICE', status);
+  drawHeader(doc, assets, 'INVOICE', status, settings);
   drawWatermark(doc, assets, 118);
 
   drawMeta(doc, [
