@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -44,15 +44,13 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function documentNumber(type: 'PRJ' | 'INV' | 'RCPT') {
-  return 'NAL/' + type + '/' + new Date().getFullYear() + '/' + Date.now().toString().slice(-6);
+function documentNumber(type: 'PRJ' | 'INV' | 'RCPT', id: string, dateValue = '') {
+  const year = /^\d{4}-/.test(dateValue) ? dateValue.slice(0, 4) : String(new Date().getFullYear());
+  return 'NAL/' + type + '/' + year + '/' + id.slice(0, 8).toUpperCase();
 }
 
-function publicToken() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID().replaceAll('-', '').slice(0, 20);
-  }
-  return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
+function recordCode(prefix: string, id: string) {
+  return prefix + '-' + id.slice(0, 8).toUpperCase();
 }
 
 function statusClass(status = '') {
@@ -322,9 +320,10 @@ function Clients() {
       if (editing) {
         await updateDoc(doc(db, 'clients', editing.id), payload);
       } else {
-        await addDoc(collection(db, 'clients'), {
+        const clientRef = doc(collection(db, 'clients'));
+        await setDoc(clientRef, {
           ...payload,
-          clientCode: 'CLI-' + Date.now().toString().slice(-6),
+          clientCode: recordCode('CLI', clientRef.id),
           createdAt: serverTimestamp(),
         });
       }
@@ -506,9 +505,10 @@ function Projects() {
       if (editing) {
         await updateDoc(doc(db, 'projects', editing.id), payload);
       } else {
-        await addDoc(collection(db, 'projects'), {
+        const projectRef = doc(collection(db, 'projects'));
+        await setDoc(projectRef, {
           ...payload,
-          projectNumber: documentNumber('PRJ'),
+          projectNumber: documentNumber('PRJ', projectRef.id, form.receivedDate),
           createdAt: serverTimestamp(),
         });
       }
@@ -642,6 +642,7 @@ function Invoices() {
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
   const [paying, setPaying] = useState<any>(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     paymentDate: today(),
@@ -686,10 +687,13 @@ function Invoices() {
     const subtotal = Number(form.amount || 0);
     const discount = Number(form.discount || 0);
     const grandTotal = Math.max(0, subtotal - discount);
-    const token = publicToken();
-    const number = documentNumber('INV');
+    const invoiceRef = doc(collection(db, 'invoices'));
+    const registryRef = doc(collection(db, 'public_documents'));
+    const token = registryRef.id;
+    const number = documentNumber('INV', invoiceRef.id, form.issueDate);
+    const batch = writeBatch(db);
 
-    await addDoc(collection(db, 'invoices'), {
+    batch.set(invoiceRef, {
       invoiceNumber: number,
       projectId: project.id,
       projectName: project.name,
@@ -726,7 +730,7 @@ function Invoices() {
       updatedAt: serverTimestamp(),
     });
 
-    await setDoc(doc(db, 'public_documents', token), {
+    batch.set(registryRef, {
       type: 'invoice',
       documentNumber: number,
       clientName: client.name,
@@ -737,6 +741,8 @@ function Invoices() {
       status: 'unpaid',
       valid: true,
     });
+
+    await batch.commit();
 
     setForm(blank);
     setShowForm(false);
@@ -772,88 +778,137 @@ function Invoices() {
 
   const recordPayment = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!paying) return;
+    if (!paying || paymentBusy) return;
 
     const amount = Math.max(0, Number(paymentForm.amount || 0));
     if (!amount) return;
 
-    const currentPaid = Number(paying.paidAmount || 0);
-    const total = Number(paying.grandTotal || 0);
-    const newPaid = Math.min(total, currentPaid + amount);
-    const outstanding = Math.max(0, total - newPaid);
-    const nextStatus = outstanding === 0 ? 'paid' : 'partial';
+    const paymentRef = doc(collection(db, 'payments'));
+    setPaymentBusy(true);
 
-    await addDoc(collection(db, 'payments'), {
-      invoiceId: paying.id,
-      invoiceNumber: paying.invoiceNumber,
-      clientId: paying.clientId,
-      paymentDate: paymentForm.paymentDate,
-      amount,
-      paymentMethod: paymentForm.paymentMethod,
-      reference: paymentForm.reference,
-      paymentDetails: paymentInformation(paymentForm.paymentMethod, settings || {}),
-      createdAt: serverTimestamp(),
-    });
+    try {
+      await runTransaction(db, async (transaction) => {
+        const invoiceRef = doc(db, 'invoices', paying.id);
+        const invoiceSnap = await transaction.get(invoiceRef);
+        if (!invoiceSnap.exists()) throw new Error('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.');
 
-    await updateDoc(doc(db, 'invoices', paying.id), {
-      paidAmount: newPaid,
-      outstandingAmount: outstanding,
-      status: nextStatus,
-      updatedAt: serverTimestamp(),
-    });
+        const invoice = invoiceSnap.data();
+        const currentStatus = String(invoice.status || '').toLowerCase();
+        if (currentStatus === 'cancelled') throw new Error('Invoice sudah dibatalkan dan tidak dapat menerima pembayaran.');
+        if (currentStatus === 'paid') throw new Error('Invoice sudah lunas.');
 
-    if (paying.publicToken) {
-      await updateDoc(doc(db, 'public_documents', paying.publicToken), { status: nextStatus });
+        const total = Math.max(0, Number(invoice.grandTotal || 0));
+        const currentPaid = Math.max(0, Number(invoice.paidAmount || 0));
+        const outstandingBefore = Math.max(0, Number(invoice.outstandingAmount ?? (total - currentPaid)));
+        if (outstandingBefore <= 0) throw new Error('Invoice sudah tidak memiliki sisa tagihan.');
+        if (amount > outstandingBefore) {
+          throw new Error('Pembayaran melebihi sisa tagihan saat ini (' + money(outstandingBefore) + '). Data mungkin telah berubah di perangkat lain.');
+        }
+
+        const newPaid = currentPaid + amount;
+        const outstanding = Math.max(0, total - newPaid);
+        const nextStatus = outstanding === 0 ? 'paid' : 'partial';
+
+        transaction.set(paymentRef, {
+          invoiceId: paying.id,
+          invoiceNumber: invoice.invoiceNumber || paying.invoiceNumber,
+          clientId: invoice.clientId || paying.clientId,
+          paymentDate: paymentForm.paymentDate,
+          amount,
+          paymentMethod: paymentForm.paymentMethod,
+          reference: paymentForm.reference,
+          paymentDetails: paymentInformation(paymentForm.paymentMethod, settings || {}),
+          createdAt: serverTimestamp(),
+        });
+
+        transaction.update(invoiceRef, {
+          paidAmount: newPaid,
+          outstandingAmount: outstanding,
+          status: nextStatus,
+          updatedAt: serverTimestamp(),
+        });
+
+        if (invoice.publicToken) {
+          transaction.update(doc(db, 'public_documents', invoice.publicToken), { status: nextStatus });
+        }
+      });
+
+      setPaying(null);
+      setPaymentForm({ amount: '', paymentDate: today(), paymentMethod: 'Bank Transfer', reference: '' });
+      await load();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Pembayaran gagal disimpan. Muat ulang lalu coba lagi.');
+    } finally {
+      setPaymentBusy(false);
     }
-
-    setPaying(null);
-    setPaymentForm({ amount: '', paymentDate: today(), paymentMethod: 'Bank Transfer', reference: '' });
-    await load();
   };
 
   const issueReceipt = async (invoice: any) => {
     const invoicePayments = payments
       .filter((item) => item.invoiceId === invoice.id)
       .sort((a, b) => String(b.paymentDate).localeCompare(String(a.paymentDate)));
-    const payment = invoicePayments[0];
-    if (!payment || receipts.some((item) => item.paymentId === payment.id)) return;
+    const payment = invoicePayments.find((item) => !receipts.some((receipt) => receipt.paymentId === item.id));
+    if (!payment) return;
 
-    const token = publicToken();
-    const number = documentNumber('RCPT');
+    // One receipt per payment across web/mobile. The deterministic receipt id also
+    // makes transaction retries idempotent.
+    const receiptRef = doc(db, 'receipts', payment.id);
+    const registryRef = doc(collection(db, 'public_documents'));
+    const token = registryRef.id;
+    const number = documentNumber('RCPT', receiptRef.id, payment.paymentDate);
 
-    await addDoc(collection(db, 'receipts'), {
-      receiptNumber: number,
-      invoiceId: invoice.id,
-      relatedInvoice: invoice.invoiceNumber,
-      paymentId: payment.id,
-      clientId: invoice.clientId,
-      clientName: invoice.clientName,
-      projectName: invoice.projectName || '',
-      projectId: invoice.projectId || '',
-      clientSnapshot: invoice.clientSnapshot || { name: invoice.clientName || '' },
-      amount: payment.amount,
-      paymentDate: payment.paymentDate,
-      paymentMethod: payment.paymentMethod,
-      paymentReference: payment.reference || '',
-      paymentDetails: payment.paymentDetails || paymentInformation(payment.paymentMethod, settings || {}),
-      publicToken: token,
-      createdAt: serverTimestamp(),
-    });
+    try {
+      await runTransaction(db, async (transaction) => {
+        const paymentRef = doc(db, 'payments', payment.id);
+        const invoiceRef = doc(db, 'invoices', invoice.id);
+        const paymentSnap = await transaction.get(paymentRef);
+        const invoiceSnap = await transaction.get(invoiceRef);
+        const existingReceipt = await transaction.get(receiptRef);
 
-    await setDoc(doc(db, 'public_documents', token), {
-      type: 'receipt',
-      documentNumber: number,
-      relatedInvoice: invoice.invoiceNumber,
-      clientName: invoice.clientName,
-      projectName: invoice.projectName || '',
-      amount: payment.amount,
-      paymentDate: payment.paymentDate,
-      paymentMethod: payment.paymentMethod,
-      status: 'paid',
-      valid: true,
-    });
+        if (!paymentSnap.exists()) throw new Error('Data pembayaran tidak ditemukan. Muat ulang halaman lalu coba lagi.');
+        if (!invoiceSnap.exists()) throw new Error('Invoice tidak ditemukan. Muat ulang halaman lalu coba lagi.');
+        if (existingReceipt.exists()) return;
 
-    await load();
+        const freshPayment = paymentSnap.data();
+        const freshInvoice = invoiceSnap.data();
+
+        transaction.set(receiptRef, {
+          receiptNumber: number,
+          invoiceId: invoice.id,
+          relatedInvoice: freshInvoice.invoiceNumber || invoice.invoiceNumber,
+          paymentId: payment.id,
+          clientId: freshInvoice.clientId || invoice.clientId,
+          clientName: freshInvoice.clientName || invoice.clientName,
+          projectName: freshInvoice.projectName || invoice.projectName || '',
+          projectId: freshInvoice.projectId || invoice.projectId || '',
+          clientSnapshot: freshInvoice.clientSnapshot || invoice.clientSnapshot || { name: invoice.clientName || '' },
+          amount: freshPayment.amount,
+          paymentDate: freshPayment.paymentDate,
+          paymentMethod: freshPayment.paymentMethod,
+          paymentReference: freshPayment.reference || '',
+          paymentDetails: freshPayment.paymentDetails || paymentInformation(freshPayment.paymentMethod, settings || {}),
+          publicToken: token,
+          createdAt: serverTimestamp(),
+        });
+
+        transaction.set(registryRef, {
+          type: 'receipt',
+          documentNumber: number,
+          relatedInvoice: freshInvoice.invoiceNumber || invoice.invoiceNumber,
+          clientName: freshInvoice.clientName || invoice.clientName,
+          projectName: freshInvoice.projectName || invoice.projectName || '',
+          amount: freshPayment.amount,
+          paymentDate: freshPayment.paymentDate,
+          paymentMethod: freshPayment.paymentMethod,
+          status: 'paid',
+          valid: true,
+        });
+      });
+
+      await load();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Receipt gagal diterbitkan. Muat ulang lalu coba lagi.');
+    }
   };
 
   return (
@@ -897,7 +952,7 @@ function Invoices() {
             <label><span>Metode</span><select value={paymentForm.paymentMethod} onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}>{PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}</select></label>
             <label><span>Referensi</span><input value={paymentForm.reference} onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })} /></label>
           </div>
-          <div className="form-actions"><button className="primary-button" type="submit">Simpan pembayaran</button></div>
+          <div className="form-actions"><button disabled={paymentBusy} className="primary-button" type="submit">{paymentBusy ? 'Menyimpan…' : 'Simpan pembayaran'}</button></div>
         </form>
       )}
 
@@ -909,8 +964,8 @@ function Invoices() {
               const invoicePayments = payments
                 .filter((item) => item.invoiceId === invoice.id)
                 .sort((a, b) => String(b.paymentDate).localeCompare(String(a.paymentDate)));
-              const latestPayment = invoicePayments[0];
-              const hasReceipt = latestPayment ? receipts.some((item) => item.paymentId === latestPayment.id) : false;
+              const pendingReceiptPayment = invoicePayments.find((payment) => !receipts.some((receipt) => receipt.paymentId === payment.id));
+              const allPaymentsReceipted = invoicePayments.length > 0 && !pendingReceiptPayment;
 
               return (
                 <tr key={invoice.id}>
@@ -933,8 +988,8 @@ function Invoices() {
                           }));
                         }}>Bayar</button>
                       )}
-                      {latestPayment && !hasReceipt && <button onClick={() => issueReceipt(invoice)}>Receipt</button>}
-                      {hasReceipt && <span>Receipt ✓</span>}
+                      {pendingReceiptPayment && <button onClick={() => issueReceipt(invoice)}>Receipt</button>}
+                      {allPaymentsReceipted && <span>Receipt ✓</span>}
                       <button className="danger-action" onClick={() => deleteInvoice(invoice)}>Hapus</button>
                     </div>
                   </td>
