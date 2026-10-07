@@ -46,7 +46,7 @@ PDF memakai layout A4 satu halaman: header abu-abu terang, aksen oranye, waterma
 
 Kolom **URL dasar verifikasi** di Pengaturan dapat dikosongkan untuk mengikuti alamat aplikasi yang sedang diakses, termasuk domain Pages yang aktif. Contoh URL khusus: `https://alamat-aplikasi/verifi/`.
 
-Urutan pemilihan alamat: pengaturan eksplisit, `PUBLIC_VERIFICATION_BASE_URL`, lalu origin aplikasi. Nilai bawaan lama `https://e-invoice.nalaro.web.id/verifi/` otomatis mengikuti origin saat aplikasi diakses dari host lain. Halaman verifikasi juga menerima `/verifi/?token=TOKEN` untuk host tanpa rewrite path.
+Urutan pemilihan alamat: pengaturan eksplisit, `PUBLIC_VERIFICATION_BASE_URL`, lalu origin aplikasi. Nilai bawaan lama `https://e-invoice.nalaro.digital/verifi/` otomatis mengikuti origin saat aplikasi diakses dari host lain. Halaman verifikasi juga menerima `/verifi/?token=TOKEN` untuk host tanpa rewrite path.
 
 Subdomain khusus harus ditambahkan dan diaktifkan melalui penyedia hosting/DNS sebelum dipakai. Perubahan kode tidak membuat DNS subdomain aktif. PDF yang sudah tersimpan dengan alamat lama perlu diunduh ulang; token verifikasi tetap sama.
 

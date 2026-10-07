@@ -3,7 +3,7 @@
 ## 1. Ringkasan Produk
 
 **Nama produk:** Nalaro E-Invoice  
-**Subdomain target:** `e-invoice.nalaro.web.id`  
+**Subdomain target:** `e-invoice.nalaro.digital`  
 **Tipe aplikasi:** Web app statis dengan backend ringan berbasis Firebase  
 **Target pengguna utama:** Internal Nalaro / admin  
 **Target pengguna publik:** Client atau pihak penerima invoice/receipt yang melakukan verifikasi QR
@@ -50,7 +50,7 @@ Deployment:
 `Cloudflare Pages`
 
 Domain:
-`e-invoice.nalaro.web.id`
+`e-invoice.nalaro.digital`
 
 Frontend menggunakan stack yang konsisten dengan aplikasi utama Nalaro. Jika aplikasi utama menggunakan Astro, e-invoice dapat menggunakan Astro dengan JavaScript/TypeScript.
 
@@ -61,7 +61,7 @@ Metode:
 `Email / Password`
 
 Akun admin awal:
-`admin@nalaro.web.id`
+`admin@nalaro.digital`
 
 Password dikelola melalui Firebase Authentication dan **tidak disimpan langsung di source code frontend**.
 
@@ -442,7 +442,7 @@ Public route:
 `/verif/:token`
 
 Contoh:
-`https://e-invoice.nalaro.web.id/verif/x7Qm9K2pV4Lc8Nw3`
+`https://e-invoice.nalaro.digital/verif/x7Qm9K2pV4Lc8Nw3`
 
 QR pada PDF mengarah ke URL tersebut.
 
@@ -545,7 +545,7 @@ Text:
 `Verify this document`
 
 QR:
-`https://e-invoice.nalaro.web.id/verif/:token`
+`https://e-invoice.nalaro.digital/verif/:token`
 
 ### Notes
 Default:
@@ -664,7 +664,7 @@ Default:
 
 ### Verification Base URL
 Default:
-`https://e-invoice.nalaro.web.id/verif/`
+`https://e-invoice.nalaro.digital/verif/`
 
 ### Invoice Notes
 Default notes.
@@ -881,7 +881,7 @@ Send to Client
 ```text
 Client scans QR
   ↓
-e-invoice.nalaro.web.id/verif/:token
+e-invoice.nalaro.digital/verif/:token
   ↓
 Firestore public document
   ↓
@@ -1019,6 +1019,6 @@ PDF dibuat di browser.
 
 QR Code menghubungkan dokumen fisik/digital ke halaman verification publik:
 
-`e-invoice.nalaro.web.id/verif/:token`
+`e-invoice.nalaro.digital/verif/:token`
 
 Seluruh desain aplikasi mengikuti identitas visual dan design system Nalaro utama agar terasa sebagai satu ekosistem, bukan aplikasi terpisah.

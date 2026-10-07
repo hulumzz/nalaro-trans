@@ -6,7 +6,7 @@ export const site = {
   subheadline: "Kami membangun produk untuk membantu orang belajar, bekerja, dan mengelola hal yang penting bagi mereka.",
   description: "Nalaro adalah studio produk digital yang membangun SaaS, AI tools, platform pendidikan, dan aplikasi web untuk kebutuhan bisnis dan organisasi.",
   closing: "Build useful things.",
-  domain: configured(import.meta.env.PUBLIC_SITE_URL) || "https://nalaro.web.id",
+  domain: configured(import.meta.env.PUBLIC_SITE_URL) || "https://nalaro.digital",
   email: configured(import.meta.env.PUBLIC_CONTACT_EMAIL) || "nalaro@skripzy.id",
   whatsapp: (configured(import.meta.env.PUBLIC_WHATSAPP) || "6285771298582").replace(/\D/g, ""),
   social: { instagram: "", linkedin: "", github: "" },

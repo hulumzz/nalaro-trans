@@ -29,7 +29,7 @@ const api = {
   async checks() {
     const origin = window.location.origin;
     const expected = origin + '/verifi/' + token;
-    const actual = verificationUrl(token, { verificationBaseUrl: 'https://e-invoice.nalaro.web.id/verif/' });
+    const actual = verificationUrl(token, { verificationBaseUrl: 'https://e-invoice.nalaro.digital/verif/' });
     if (actual !== expected) throw new Error('Legacy URL migration failed');
     if (verificationBaseUrl({ verificationBaseUrl: 'https://registry.example' }) !== 'https://registry.example/verifi/') throw new Error('Explicit base URL failed');
     if (verificationToken({ pathname: '/verifi/' + token + '/', search: '' }) !== token) throw new Error('Path token failed');

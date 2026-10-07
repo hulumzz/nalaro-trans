@@ -1040,7 +1040,7 @@ function Settings() {
     businessName: 'Nalaro',
     ownerName: 'Muhamad Khoirul Ulum',
     email: '',
-    website: 'https://nalaro.web.id',
+    website: 'https://nalaro.digital',
     address: '',
     bankName: '',
     accountNumber: '',
@@ -1062,7 +1062,7 @@ function Settings() {
     getDoc(doc(db, 'settings', 'general')).then((snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.verificationBaseUrl === 'https://e-invoice.nalaro.web.id/verif/' && window.location.hostname !== 'e-invoice.nalaro.web.id') data.verificationBaseUrl = '';
+        if (data.verificationBaseUrl === 'https://e-invoice.nalaro.digital/verif/' && window.location.hostname !== 'e-invoice.nalaro.digital') data.verificationBaseUrl = '';
         setForm((current) => ({ ...current, ...data }));
       }
     }).catch(console.error);
@@ -1169,7 +1169,7 @@ function AdminLayout() {
   return (
     <div className="admin-shell">
       <header className="admin-mobilebar">
-        <a href="https://nalaro.web.id" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
+        <a href="https://nalaro.digital" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
         <button onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? 'Tutup' : 'Menu'} <span>+</span></button>
       </header>
 
@@ -1177,7 +1177,7 @@ function AdminLayout() {
 
       <aside className={'admin-sidebar ' + (menuOpen ? 'is-open' : '')}>
         <div className="sidebar-head">
-          <a href="https://nalaro.web.id" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
+          <a href="https://nalaro.digital" className="admin-brand"><img src="/brand/nalaro.png" alt="" /><span>nalaro</span></a>
           <p>PROJECT DESK / INTERNAL</p>
         </div>
 

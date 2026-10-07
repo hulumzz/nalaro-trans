@@ -57,7 +57,7 @@ export default function VerificationApp({ token: providedToken }: { token?: stri
           <span className="verification-state invalid"><i /> TIDAK DITEMUKAN</span>
           <h1>Dokumen tidak dapat<br/>diverifikasi.</h1>
           <p>Token tidak valid, dokumen belum diterbitkan, atau registry sedang tidak dapat diakses.</p>
-          <a className="text-link" href="https://nalaro.web.id">Kembali ke Nalaro <span>↗</span></a>
+          <a className="text-link" href="https://nalaro.digital">Kembali ke Nalaro <span>↗</span></a>
         </div>
       </section>
     );

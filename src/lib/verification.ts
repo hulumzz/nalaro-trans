@@ -1,6 +1,6 @@
 const LEGACY_BASES = new Set([
-  'https://e-invoice.nalaro.web.id/verif/',
-  'https://e-invoice.nalaro.web.id/verifi/',
+  'https://e-invoice.nalaro.digital/verif/',
+  'https://e-invoice.nalaro.digital/verifi/',
 ]);
 
 /**
@@ -14,7 +14,7 @@ export function verificationBaseUrl(settings: any = {}, origin = typeof window !
   let raw = configured || environment || origin;
   if (configured && LEGACY_BASES.has(configured) && origin) {
     try {
-      if (new URL(origin).hostname !== 'e-invoice.nalaro.web.id') raw = origin;
+      if (new URL(origin).hostname !== 'e-invoice.nalaro.digital') raw = origin;
     } catch { /* validation below returns the user-facing error */ }
   }
 

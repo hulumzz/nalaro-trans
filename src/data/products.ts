@@ -30,7 +30,7 @@ export const products: Product[] = [
       "Platform belajar yang menyatukan LMS, kuis interaktif, dan gamifikasi.",
     focus: ["LMS", "kuis", "classroom game", "materi", "evaluasi"],
     status: "Coming Soon",
-    url: "https://www.class.nalaro.web.id",
+    url: "https://www.class.nalaro.digital",
   },
   {
     number: "03",

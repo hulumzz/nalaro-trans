@@ -182,7 +182,7 @@ function drawHeader(doc: jsPDF, assets: Assets, title: string, status: string, s
   setText(doc, 19.5, 'bold', INK);
   doc.text('NALARO', 39, 20.2);
   setText(doc, 6.8, 'normal', MUTED);
-  doc.text(settings?.website || 'https://nalaro.web.id', 39, 26.1);
+  doc.text(settings?.website || 'https://nalaro.digital', 39, 26.1);
 
   setText(doc, 20, 'bold', FLARE);
   doc.text(title, RIGHT, 19.2, { align: 'right' });
@@ -205,7 +205,7 @@ function drawFooter(doc: jsPDF, message: string, settings: any = {}) {
   setText(doc, 6.6, 'normal', MUTED);
   doc.text('Nalaro', LEFT, 284);
   doc.text(message, 105, 284, { align: 'center' });
-  doc.text(settings?.email || 'business@nalaro.web.id', RIGHT, 284, { align: 'right' });
+  doc.text(settings?.email || 'business@nalaro.digital', RIGHT, 284, { align: 'right' });
   setText(doc, 6.4, 'normal', MUTED);
   doc.text(PUBLIC_SITE, 105, 290, { align: 'center' });
   doc.link(86, 286.5, 38, 5.5, { url: PUBLIC_SITE });
