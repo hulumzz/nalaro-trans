@@ -200,13 +200,15 @@ function drawWatermark(doc: jsPDF, assets: Assets, y = 118) {
   try { doc.addImage(assets.watermark, 'PNG', 67, y, 76, 76, 'brand-watermark', 'FAST'); } catch { /* decorative only */ }
 }
 
-function drawFooter(doc: jsPDF, message: string) {
+function drawFooter(doc: jsPDF, message: string, settings: any = {}) {
   line(doc, 277);
-  setText(doc, 6.8, 'normal', MUTED);
-  doc.text('Nalaro', LEFT, 285);
-  doc.text(message, 105, 285, { align: 'center' });
-  doc.text(PUBLIC_SITE, RIGHT, 285, { align: 'right' });
-  doc.link(RIGHT - 39, 281.5, 39, 5.5, { url: PUBLIC_SITE });
+  setText(doc, 6.6, 'normal', MUTED);
+  doc.text('Nalaro', LEFT, 284);
+  doc.text(message, 105, 284, { align: 'center' });
+  doc.text(settings?.email || 'business@nalaro.web.id', RIGHT, 284, { align: 'right' });
+  setText(doc, 6.4, 'normal', MUTED);
+  doc.text(PUBLIC_SITE, 105, 290, { align: 'center' });
+  doc.link(86, 286.5, 38, 5.5, { url: PUBLIC_SITE });
 }
 
 function drawMeta(doc: jsPDF, fields: Array<{ label: string; value: unknown; x: number; width: number; align?: 'left' | 'right' }>) {
@@ -271,6 +273,11 @@ function drawPaymentDetails(doc: jsPDF, documentData: any, settings: any, y: num
   for (const [label, value] of paymentRows(payment)) {
     drawLabel(doc, label, LEFT, rowY);
     drawValue(doc, value, 46, rowY, 82, { size: 8.4, maxLines: 2 });
+    rowY += 8;
+  }
+  if (documentData.paymentReference) {
+    drawLabel(doc, 'Reference', LEFT, rowY);
+    drawValue(doc, documentData.paymentReference, 46, rowY, 82, { size: 8.2, maxLines: 2 });
     rowY += 8;
   }
   return Math.max(y + 25, rowY);
@@ -383,7 +390,7 @@ export async function buildReceiptPDF(receipt: any, client: any, project: any, s
   drawPaymentDetails(doc, receipt, settings, detailsY);
   await drawVerification(doc, receipt.publicToken, settings, assets, detailsY);
 
-  drawFooter(doc, 'Thank you for your payment.');
+  drawFooter(doc, 'Thank you for your payment.', settings);
   return doc;
 }
 
@@ -476,7 +483,7 @@ export async function buildInvoicePDF(invoice: any, client: any, project: any, s
     doc.text(note.lines, LEFT, 267);
   }
 
-  drawFooter(doc, 'Thank you for your business.');
+  drawFooter(doc, 'Thank you for your business.', settings);
   return doc;
 }
 
