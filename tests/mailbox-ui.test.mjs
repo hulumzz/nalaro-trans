@@ -36,7 +36,10 @@ try {
     await page.getByRole('button', { name: 'Tampilan HTML', exact: true }).click();
     await page.frameLocator('iframe').getByRole('heading', { name: 'Proposal Nalaro' }).waitFor();
     assert.equal(await page.evaluate(() => window.pwned), undefined);
-    assert.deepEqual(trackerRequests, []); assert.equal(await page.locator('iframe').getAttribute('sandbox'), '');
+    assert.deepEqual(trackerRequests, []); assert.equal(await page.locator('.mail-html').getAttribute('sandbox'), 'allow-popups allow-popups-to-escape-sandbox');
+    await page.frameLocator('.mail-html').getByRole('link', { name: 'Aktivasi akun' }).waitFor();
+    assert.equal(await page.frameLocator('.mail-html').getByText('Bad link').evaluate((el) => el.hasAttribute('href')), false);
+    await page.getByRole('link', { name: /Aktivasi akun/ }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Reader overflow at ' + width);
     await page.screenshot({ path: `artifacts/mailbox-tests/reader-${width}.png`, fullPage: true });
     await page.getByRole('button', { name: 'Balas email' }).click();
@@ -55,6 +58,19 @@ try {
     await page.screenshot({ path: `artifacts/mailbox-tests/compose-${width}.png`, fullPage: true });
     await page.getByRole('button', { name: 'Tutup editor email' }).click();
   }
+  await page.setViewportSize({ width: 390, height: 850 }); await page.goto(origin + '/mailbox.html');
+  await page.getByRole('button', { name: 'Semua inbox' }).waitFor();
+  await page.getByRole('button', { name: /Konfirmasi pembayaran/ }).waitFor();
+  await page.getByRole('button', { name: /Penawaran website/ }).click();
+  const textLink = page.getByRole('link', { name: 'https://example.org/verify?code=123' });
+  await page.getByRole('button', { name: 'Teks', exact: true }).click(); await textLink.waitFor();
+  await page.getByRole('button', { name: 'Tampilan HTML' }).click();
+  const fallback = page.getByRole('link', { name: /Aktivasi akun/ }); await fallback.waitFor();
+  assert.equal(await fallback.getAttribute('target'), '_blank');
+  assert.equal(await fallback.getAttribute('href'), 'https://example.org/verify?code=123');
+  await page.getByRole('button', { name: '← Kembali' }).click();
+  await page.getByRole('button', { name: /Konfirmasi pembayaran/ }).click();
+  await page.getByText('billing@nalaro.digital').last().waitFor();
   await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto(origin + '/mailbox.html');
   await page.getByRole('button', { name: /Penawaran website/ }).click(); await page.getByRole('button', { name: '☆ Star', exact: true }).click();
   await page.getByRole('button', { name: 'Starred', exact: true }).click(); await page.getByRole('button', { name: /Penawaran website/ }).waitFor();
